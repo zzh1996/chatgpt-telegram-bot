@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+    bot:
+        build: .
+        volumes:
+            - ./:/bot
+        command: python main.py
+        working_dir: /bot
+        restart: always
+        environment:
+          - OPENAI_API_KEY=
+          - TELEGRAM_BOT_TOKEN=
