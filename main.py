@@ -126,8 +126,9 @@ def reply_handler(update, context):
     reply_to_message = update.message.reply_to_message
     reply_to_id = None
     if reply_to_message is not None and update.message.reply_to_message.from_user.id == bot_id: # user reply to bot message
-        if text == '$$': # special case, messages of bot (e.g. speech-to-text results) as user's messages
-            text = reply_to_message.text
+        if text.startswith('^'): # special case, messages of bot (e.g. speech-to-text results) as user's messages
+            ref_text = reply_to_message.text
+            text = ref_text + text[1:]
         else:
             reply_to_id = reply_to_message.message_id
     elif text.startswith('$'): # new message
