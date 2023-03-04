@@ -3,6 +3,7 @@ import logging
 import shelve
 import datetime
 import openai
+from pydub import AudioSegment
 from telegram.ext import Updater, MessageHandler, Filters, CommandHandler
 
 ADMIN_ID = 71863318
@@ -125,7 +126,10 @@ def reply_handler(update, context):
     reply_to_message = update.message.reply_to_message
     reply_to_id = None
     if reply_to_message is not None and update.message.reply_to_message.from_user.id == bot_id: # user reply to bot message
-        reply_to_id = reply_to_message.message_id
+        if text == '$$': # special case, messages of bot (e.g. speech-to-text results) as user's messages
+            text = reply_to_message.text
+        else:
+            reply_to_id = reply_to_message.message_id
     elif text.startswith('$'): # new message
         if text.startswith('$'):
             text = text[1:]
@@ -150,6 +154,46 @@ def reply_handler(update, context):
     reply_id = update.message.reply_text(reply).message_id
     db[repr((chat_id, reply_id))] = (True, reply, msg_id)
     logging.info('Reply message: chat=%r, sender=%r, id=%r, reply=%r', chat_id, sender_id, reply_id, reply)
+
+def ogg2mp3(ofn):
+    wfn = ofn.replace('.ogg','.mp3')
+    x = AudioSegment.from_file(ofn)
+    x.export(wfn, format='mp3')
+    return wfn
+
+def speech_to_text(filename_ogg):
+    filename_mp3 = ogg2mp3(filename_ogg)
+    audio_file = open(filename_mp3, "rb")
+    transcript = openai.Audio.transcribe("whisper-1", audio_file)
+    return transcript["text"]
+
+@only_whitelist
+def voice_to_text_handler(update, context):
+    chat_id = update.effective_chat.id
+    sender_id = update.message.from_user.id
+    msg_id = update.message.message_id
+    voice = update.message.voice
+    voice_length = voice.duration
+    logging.info('New voice: chat=%r, sender=%r, id=%r, length=%r', chat_id, sender_id, msg_id, voice_length)
+    if voice_length > 60:
+        if update.effective_chat.id == update.message.from_user.id: # if in private chat, send hint
+            update.message.reply_text('Voice message too long')
+        return
+
+    # prepare voice dir
+    os.mkdir('./voice') if not os.path.exists('./voice') else None
+    filename = './voice/%s_%s%s.ogg' % (chat_id, update.message.from_user.id, update.message.message_id)
+    voice.get_file().download(filename)
+    # update.message.reply_chat_action(action=ChatAction.TYPING)
+
+    try:
+        reply = speech_to_text(filename)
+    except openai.OpenAIError as e:
+        logging.exception('OpenAI Error: %s', e)
+        update.message.reply_text(f'[!] OpenAI Error: {e}')
+        return
+
+    update.message.reply_text(reply)
 
 def ping(update, context):
     update.message.reply_text(f'chat_id={update.effective_chat.id} user_id={update.message.from_user.id} is_whitelisted={is_whitelist(update.effective_chat.id)}')
@@ -178,6 +222,7 @@ if __name__ == '__main__':
         logging.info("Bot ID: %s", bot_id)
         dispatcher = updater.dispatcher
         dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), reply_handler))
+        dispatcher.add_handler(MessageHandler(Filters.voice & (~Filters.command), voice_to_text_handler))
         dispatcher.add_handler(CommandHandler('ping', ping))
         dispatcher.add_handler(CommandHandler('add_whitelist', add_whitelist_handler))
         dispatcher.add_handler(CommandHandler('del_whitelist', del_whitelist_handler))
