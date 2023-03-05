@@ -2,6 +2,7 @@ import os
 import logging
 import shelve
 import datetime
+import time
 import openai
 from telegram.ext import Updater, MessageHandler, Filters, CommandHandler
 
@@ -66,11 +67,18 @@ def completion(chat_history): # chat_history = [user, ai, user, ai, ..., user]
         messages.append({"role": roles[role_id], "content": msg})
         role_id = 1 - role_id
     logging.info('Request: %s', messages)
-    response = openai.ChatCompletion.create(model=MODEL, messages=messages)
-    logging.info('Response: %s', response)
-    if response['choices'][0]['message']['role'] != 'assistant':
-        return
-    return response['choices'][0]['message']['content']
+    stream = openai.ChatCompletion.create(model=MODEL, messages=messages, stream=True)
+    for response in stream:
+        logging.info('Response: %s', response)
+        obj = response['choices'][0]
+        if obj['finish_reason'] is not None:
+            assert not obj['delta']
+            return
+        if 'role' in obj['delta']:
+            if obj['delta']['role'] != 'assistant':
+                raise ValueError("Role error")
+        if 'content' in obj['delta']:
+            yield obj['delta']['content']
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
@@ -115,6 +123,17 @@ def del_whitelist_handler(update, context):
 def get_whitelist_handler(update, context):
     update.message.reply_text(str(get_whitelist()))
 
+def reply_or_edit(update, reply, reply_msg):
+    chat_id = update.effective_chat.id
+    sender_id = update.message.from_user.id
+    is_edit = reply_msg is not None
+    if not is_edit:
+        reply_msg = update.message.reply_text(reply, disable_web_page_preview=True)
+    else:
+        reply_msg = reply_msg.edit_text(reply, disable_web_page_preview=True)
+    logging.info('Reply message: chat=%r, sender=%r, id=%r, is_edit=%r, reply=%r', chat_id, sender_id, reply_msg.message_id, is_edit, reply)
+    return reply_msg
+
 @only_whitelist
 def reply_handler(update, context):
     chat_id = update.effective_chat.id
@@ -140,16 +159,37 @@ def reply_handler(update, context):
         update.message.reply_text(f"[!] Error: Can't fetch this conversation, please start a new one.")
         return
 
+    reply_msg = None
     try:
-        reply = completion(chat_history)
+        cnt = 0
+        while True:
+            try:
+                stream = completion(chat_history)
+                break
+            except openai.OpenAIError as e:
+                if e.http_status != 500:
+                    raise
+                cnt += 1
+                if cnt == 3:
+                    raise
+        last_time = time.time()
+        reply = ''
+        last_sent_reply = None
+        for delta in stream:
+            print('delta', delta)
+            reply += delta
+            if time.time() - last_time >= 1 and reply != delta and reply != last_sent_reply:
+                last_time = time.time()
+                reply_msg = reply_or_edit(update, reply, reply_msg)
+                last_sent_reply = reply
+        if reply != last_sent_reply:
+            reply_msg = reply_or_edit(update, reply, reply_msg)
     except openai.OpenAIError as e:
         logging.exception('OpenAI Error: %s', e)
-        update.message.reply_text(f'[!] OpenAI Error: {e}')
+        reply_or_edit(update, f'[!] OpenAI Error: {e}', reply_msg)
         return
 
-    reply_id = update.message.reply_text(reply).message_id
-    db[repr((chat_id, reply_id))] = (True, reply, msg_id)
-    logging.info('Reply message: chat=%r, sender=%r, id=%r, reply=%r', chat_id, sender_id, reply_id, reply)
+    db[repr((chat_id, reply_msg.message_id))] = (True, reply, msg_id)
 
 def ping(update, context):
     update.message.reply_text(f'chat_id={update.effective_chat.id} user_id={update.message.from_user.id} is_whitelisted={is_whitelist(update.effective_chat.id)}')
