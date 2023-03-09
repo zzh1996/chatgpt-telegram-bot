@@ -5,6 +5,7 @@ import datetime
 import time
 import openai
 from telegram.ext import Updater, MessageHandler, Filters, CommandHandler
+from telegram.error import RetryAfter, NetworkError, TimedOut
 
 ADMIN_ID = 71863318
 MODEL = "gpt-3.5-turbo"
@@ -15,6 +16,19 @@ def PROMPT():
 openai.api_key = os.getenv("OPENAI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
+
+def retry(max_retry=30, interval=10):
+    def decorator(func):
+        def new_func(*args, **kwargs):
+            for _ in range(max_retry - 1):
+                try:
+                    return func(*args, **kwargs)
+                except (RetryAfter, NetworkError, TimedOut) as e:
+                    logging.exception(e)
+                    time.sleep(interval)
+            return func(*args, **kwargs)
+        return new_func
+    return decorator
 
 def is_whitelist(chat_id):
     whitelist = db['whitelist']
@@ -73,6 +87,8 @@ def completion(chat_history): # chat_history = [user, ai, user, ai, ..., user]
         obj = response['choices'][0]
         if obj['finish_reason'] is not None:
             assert not obj['delta']
+            if obj['finish_reason'] == 'length':
+                yield ' [!长度超限]'
             return
         if 'role' in obj['delta']:
             if obj['delta']['role'] != 'assistant':
@@ -123,6 +139,7 @@ def del_whitelist_handler(update, context):
 def get_whitelist_handler(update, context):
     update.message.reply_text(str(get_whitelist()))
 
+@retry()
 def reply_or_edit(update, reply, reply_msg):
     chat_id = update.effective_chat.id
     sender_id = update.message.from_user.id
@@ -178,12 +195,11 @@ def reply_handler(update, context):
         for delta in stream:
             print('delta', delta)
             reply += delta
-            if time.time() - last_time >= 1 and reply != delta and reply != last_sent_reply:
+            if time.time() - last_time >= 4 and reply != delta and reply != last_sent_reply:
                 last_time = time.time()
-                reply_msg = reply_or_edit(update, reply, reply_msg)
+                reply_msg = reply_or_edit(update, reply + ' [!正在生成]', reply_msg)
                 last_sent_reply = reply
-        if reply != last_sent_reply:
-            reply_msg = reply_or_edit(update, reply, reply_msg)
+        reply_msg = reply_or_edit(update, reply, reply_msg)
     except openai.OpenAIError as e:
         logging.exception('OpenAI Error: %s', e)
         reply_or_edit(update, f'[!] OpenAI Error: {e}', reply_msg)
