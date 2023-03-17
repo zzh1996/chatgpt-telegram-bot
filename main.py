@@ -5,7 +5,7 @@ import datetime
 import time
 import openai
 from telegram.ext import Updater, MessageHandler, Filters, CommandHandler
-from telegram.error import RetryAfter, NetworkError, TimedOut
+from telegram.error import RetryAfter, NetworkError, BadRequest
 
 ADMIN_ID = 71863318
 MODEL = "gpt-3.5-turbo"
@@ -23,7 +23,9 @@ def retry(max_retry=30, interval=10):
             for _ in range(max_retry - 1):
                 try:
                     return func(*args, **kwargs)
-                except (RetryAfter, NetworkError, TimedOut) as e:
+                except (RetryAfter, NetworkError) as e:
+                    if isinstance(e, BadRequest):
+                        raise
                     logging.exception(e)
                     time.sleep(interval)
             return func(*args, **kwargs)
