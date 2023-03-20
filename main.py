@@ -83,7 +83,7 @@ def completion(chat_history): # chat_history = [user, ai, user, ai, ..., user]
         messages.append({"role": roles[role_id], "content": msg})
         role_id = 1 - role_id
     logging.info('Request: %s', messages)
-    stream = openai.ChatCompletion.create(model=MODEL, messages=messages, stream=True)
+    stream = openai.ChatCompletion.create(model=MODEL, messages=messages, stream=True, request_timeout=(30, 30))
     for response in stream:
         logging.info('Response: %s', response)
         obj = response['choices'][0]
