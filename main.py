@@ -6,9 +6,10 @@ import time
 import openai
 from telegram.ext import Updater, MessageHandler, Filters, CommandHandler
 from telegram.error import RetryAfter, NetworkError, BadRequest
+from requests.exceptions import RequestException
 
 ADMIN_ID = 71863318
-MODEL = "gpt-3.5-turbo"
+MODEL = "gpt-4"
 def PROMPT():
     s = "You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"
     return s.replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M'))
@@ -51,6 +52,8 @@ def get_whitelist():
 
 def only_admin(func):
     def new_func(update, context):
+        if update.message is None:
+            return
         if update.message.from_user.id != ADMIN_ID:
             update.message.reply_text('Only admin can use this command')
             return
@@ -59,6 +62,8 @@ def only_admin(func):
 
 def only_private(func):
     def new_func(update, context):
+        if update.message is None:
+            return
         if update.effective_chat.id != update.message.from_user.id:
             update.message.reply_text('This command only works in private chat')
             return
@@ -68,6 +73,8 @@ def only_private(func):
 def only_whitelist(func):
     def new_func(update, context):
         if not is_whitelist(update.effective_chat.id):
+            if update.message is None:
+                return
             if update.effective_chat.id == update.message.from_user.id:
                 update.message.reply_text('This chat is not in whitelist')
             return
@@ -199,10 +206,10 @@ def reply_handler(update, context):
             reply += delta
             if time.time() - last_time >= 4 and reply != delta and reply != last_sent_reply:
                 last_time = time.time()
-                reply_msg = reply_or_edit(update, reply + ' [!正在生成]', reply_msg)
+                reply_msg = reply_or_edit(update, f'[{MODEL}] ' + reply + ' [!正在生成]', reply_msg)
                 last_sent_reply = reply
-        reply_msg = reply_or_edit(update, reply, reply_msg)
-    except openai.OpenAIError as e:
+        reply_msg = reply_or_edit(update, f'[{MODEL}] ' + reply, reply_msg)
+    except (openai.OpenAIError, RequestException) as e:
         logging.exception('OpenAI Error: %s', e)
         reply_or_edit(update, f'[!] OpenAI Error: {e}', reply_msg)
         return
