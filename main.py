@@ -345,9 +345,9 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await replymsgs.finalize()
             for message_id, _ in replymsgs.replied_msgs:
                 db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
-        except (openai.OpenAIError, asyncio.exceptions.TimeoutError) as e:
-            logging.exception('OpenAI Error (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, e)
-            error_msg = f'[!] OpenAI Error: {traceback.format_exception_only(e)[-1]}'
+        except Exception as e:
+            logging.exception('Error (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, e)
+            error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1]}'
             if reply:
                 error_msg = reply + '\n\n' + error_msg
             await replymsgs.update(error_msg)
