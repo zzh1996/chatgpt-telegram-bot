@@ -5,6 +5,7 @@ import shelve
 import datetime
 import time
 import json
+import traceback
 import openai
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -24,6 +25,27 @@ TELEGRAM_MIN_INTERVAL = 3
 
 telegram_last_timestamp = None
 telegram_rate_limit_lock = asyncio.Lock()
+
+class PendingReplyManager:
+    def __init__(self):
+        self.messages = {}
+
+    def add(self, reply_id):
+        assert reply_id not in self.messages
+        self.messages[reply_id] = asyncio.Event()
+
+    def remove(self, reply_id):
+        if reply_id not in self.messages:
+            return
+        self.messages[reply_id].set()
+        del self.messages[reply_id]
+
+    async def wait_for(self, reply_id):
+        if reply_id not in self.messages:
+            return
+        logging.info('PendingReplyManager waiting for %r', reply_id)
+        await self.messages[reply_id].wait()
+        logging.info('PendingReplyManager waiting for %r finished', reply_id)
 
 def within_interval():
     global telegram_last_timestamp
@@ -101,9 +123,9 @@ def only_private(func):
 
 def only_whitelist(func):
     async def new_func(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if update.message is None:
+            return
         if not is_whitelist(update.effective_chat.id):
-            if update.message is None:
-                return
             if update.effective_chat.id == update.message.from_user.id:
                 send_message(update.effective_chat.id, 'This chat is not in whitelist', update.message.message_id)
             return
@@ -121,7 +143,7 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
     logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, messages)
     stream = await openai.ChatCompletion.acreate(model=model, messages=messages, stream=True)
     async for response in stream:
-        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, json.dumps(response))
+        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, json.dumps(response, ensure_ascii=False))
         obj = response['choices'][0]
         if obj['finish_reason'] is not None:
             assert not obj['delta']
@@ -183,34 +205,37 @@ async def get_whitelist_handler(update: Update, context: ContextTypes.DEFAULT_TY
 @retry()
 @ensure_interval()
 async def send_message(chat_id, text, reply_to_message_id):
+    logging.info('Sending message: chat_id=%r, reply_to_message_id=%r, text=%r', chat_id, reply_to_message_id, text)
     msg = await application.bot.send_message(
         chat_id,
         text,
         reply_to_message_id=reply_to_message_id,
         disable_web_page_preview=True,
     )
-    logging.info('Send message: chat_id=%r, reply_to_message_id=%r, text=%r', chat_id, reply_to_message_id, text)
+    logging.info('Message sent: chat_id=%r, reply_to_message_id=%r, message_id=%r', chat_id, reply_to_message_id, msg.message_id)
     return msg.message_id
 
 @retry()
 @ensure_interval()
 async def edit_message(chat_id, text, message_id):
+    logging.info('Editing message: chat_id=%r, message_id=%r, text=%r', chat_id, message_id, text)
     await application.bot.edit_message_text(
         text,
         chat_id=chat_id,
         message_id=message_id,
         disable_web_page_preview=True,
     )
-    logging.info('Edit message: chat_id=%r, message_id=%r, text=%r', chat_id, message_id, text)
+    logging.info('Message edited: chat_id=%r, message_id=%r', chat_id, message_id)
 
 @retry()
 @ensure_interval()
 async def delete_message(chat_id, message_id):
+    logging.info('Deleting message: chat_id=%r, message_id=%r', chat_id, message_id)
     await application.bot.delete_message(
         chat_id,
         message_id,
     )
-    logging.info('Delete message: chat_id=%r, message_id=%r', chat_id, message_id)
+    logging.info('Message deleted: chat_id=%r, message_id=%r', chat_id, message_id)
 
 class BotReplyMessages:
     def __init__(self, chat_id, orig_msg_id, prefix):
@@ -221,6 +246,14 @@ class BotReplyMessages:
         self.orig_msg_id = orig_msg_id
         self.replied_msgs = []
         self.text = ''
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, type, value, tb):
+        await self.finalize()
+        for msg_id, _ in self.replied_msgs:
+            pending_reply_manager.remove((self.chat_id, msg_id))
 
     async def _force_update(self, text):
         slices = []
@@ -243,10 +276,12 @@ class BotReplyMessages:
                     reply_to, _ = self.replied_msgs[i - 1]
                 msg_id = await send_message(self.chat_id, self.prefix + slices[i], reply_to)
                 self.replied_msgs.append((msg_id, slices[i]))
+                pending_reply_manager.add((self.chat_id, msg_id))
         if len(self.replied_msgs) > len(slices):
             for i in range(len(slices), len(self.replied_msgs)):
                 msg_id, _ = self.replied_msgs[i]
                 await delete_message(self.chat_id, msg_id)
+                pending_reply_manager.remove((self.chat_id, msg_id))
             self.replied_msgs = self.replied_msgs[:len(slices)]
 
     async def update(self, text):
@@ -269,6 +304,7 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     model = DEFAULT_MODEL
     if reply_to_message is not None and update.message.reply_to_message.from_user.id == bot_id: # user reply to bot message
         reply_to_id = reply_to_message.message_id
+        await pending_reply_manager.wait_for((chat_id, reply_to_id))
     elif text.startswith('$'): # new message
         if text.startswith('$'):
             if text.startswith('$$'):
@@ -288,36 +324,33 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     reply = ''
-    replymsgs = BotReplyMessages(chat_id, msg_id, f'[{model}] ')
-    try:
-        cnt = 0
-        while True:
-            try:
-                stream = completion(chat_history, model, chat_id, msg_id)
-                break
-            except openai.OpenAIError as e:
-                if e.http_status != 500:
-                    raise
-                cnt += 1
-                if cnt == 5:
-                    raise
-                await asyncio.sleep(5)
-        async for delta in stream:
-            reply += delta
-            await replymsgs.update(reply + ' [!正在生成]')
-        await replymsgs.update(reply)
-        await replymsgs.finalize()
-    except (openai.OpenAIError, asyncio.exceptions.TimeoutError) as e:
-        logging.exception('OpenAI Error (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, e)
-        error_msg = f'[!] OpenAI Error: {e}'
-        if reply:
-            error_msg = reply + '\n\n' + error_msg
-        await replymsgs.update(error_msg)
-        await replymsgs.finalize()
-        return
-
-    for message_id, _ in replymsgs.replied_msgs:
-        db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
+    async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
+        try:
+            cnt = 0
+            while True:
+                try:
+                    stream = completion(chat_history, model, chat_id, msg_id)
+                    break
+                except openai.OpenAIError as e:
+                    if e.http_status != 500:
+                        raise
+                    cnt += 1
+                    if cnt == 5:
+                        raise
+                    await asyncio.sleep(5)
+            async for delta in stream:
+                reply += delta
+                await replymsgs.update(reply + ' [!正在生成]')
+            await replymsgs.update(reply)
+            await replymsgs.finalize()
+            for message_id, _ in replymsgs.replied_msgs:
+                db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
+        except (openai.OpenAIError, asyncio.exceptions.TimeoutError) as e:
+            logging.exception('OpenAI Error (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, e)
+            error_msg = f'[!] OpenAI Error: {traceback.format_exception_only(e)[-1]}'
+            if reply:
+                error_msg = reply + '\n\n' + error_msg
+            await replymsgs.update(error_msg)
 
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_message(update.effective_chat.id, f'chat_id={update.effective_chat.id} user_id={update.message.from_user.id} is_whitelisted={is_whitelist(update.effective_chat.id)}', update.message.message_id)
@@ -342,6 +375,7 @@ if __name__ == '__main__':
         if 'whitelist' not in db:
             db['whitelist'] = {ADMIN_ID}
         bot_id = int(TELEGRAM_BOT_TOKEN.split(':')[0])
+        pending_reply_manager = PendingReplyManager()
         application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
         application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), reply_handler))
         application.add_handler(CommandHandler('ping', ping))
