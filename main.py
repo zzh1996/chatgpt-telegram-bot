@@ -22,6 +22,8 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 TELEGRAM_LENGTH_LIMIT = 4096
 TELEGRAM_MIN_INTERVAL = 3
+OPENAI_MAX_RETRY = 3
+OPENAI_RETRY_INTERVAL = 10
 
 telegram_last_timestamp = None
 telegram_rate_limit_lock = asyncio.Lock()
@@ -323,34 +325,34 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_message(update.effective_chat.id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", update.message.message_id)
         return
 
-    reply = ''
-    async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
-        try:
-            cnt = 0
-            while True:
-                try:
-                    stream = completion(chat_history, model, chat_id, msg_id)
+    error_cnt = 0
+    while True:
+        reply = ''
+        async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
+            try:
+                stream = completion(chat_history, model, chat_id, msg_id)
+                async for delta in stream:
+                    reply += delta
+                    await replymsgs.update(reply + ' [!正在生成]')
+                await replymsgs.update(reply)
+                await replymsgs.finalize()
+                for message_id, _ in replymsgs.replied_msgs:
+                    db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
+                return
+            except Exception as e:
+                error_cnt += 1
+                logging.exception('Error (chat_id=%r, msg_id=%r, cnt=%r): %s', chat_id, msg_id, error_cnt, e)
+                will_retry = not isinstance (e, openai.InvalidRequestError) and error_cnt <= OPENAI_MAX_RETRY
+                error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
+                if will_retry:
+                    error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
+                if reply:
+                    error_msg = reply + '\n\n' + error_msg
+                await replymsgs.update(error_msg)
+                if will_retry:
+                    await asyncio.sleep(OPENAI_RETRY_INTERVAL)
+                if not will_retry:
                     break
-                except openai.OpenAIError as e:
-                    if e.http_status != 500:
-                        raise
-                    cnt += 1
-                    if cnt == 5:
-                        raise
-                    await asyncio.sleep(5)
-            async for delta in stream:
-                reply += delta
-                await replymsgs.update(reply + ' [!正在生成]')
-            await replymsgs.update(reply)
-            await replymsgs.finalize()
-            for message_id, _ in replymsgs.replied_msgs:
-                db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
-        except Exception as e:
-            logging.exception('Error (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, e)
-            error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1]}'
-            if reply:
-                error_msg = reply + '\n\n' + error_msg
-            await replymsgs.update(error_msg)
 
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_message(update.effective_chat.id, f'chat_id={update.effective_chat.id} user_id={update.message.from_user.id} is_whitelisted={is_whitelist(update.effective_chat.id)}', update.message.message_id)
