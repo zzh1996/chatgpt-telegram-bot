@@ -150,7 +150,7 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
         if obj['finish_reason'] is not None:
             assert not obj['delta']
             if obj['finish_reason'] == 'length':
-                yield ' [!长度超限]'
+                yield ' [!Output truncated due to limit]'
             return
         if 'role' in obj['delta']:
             if obj['delta']['role'] != 'assistant':
@@ -333,7 +333,7 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 stream = completion(chat_history, model, chat_id, msg_id)
                 async for delta in stream:
                     reply += delta
-                    await replymsgs.update(reply + ' [!正在生成]')
+                    await replymsgs.update(reply + ' [!Generating...]')
                 await replymsgs.update(reply)
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
