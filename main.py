@@ -13,8 +13,10 @@ from telegram.error import RetryAfter, NetworkError, BadRequest
 
 ADMIN_ID = 71863318
 DEFAULT_MODEL = "gpt-4"
-def PROMPT():
-    s = "You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"
+def PROMPT(model):
+    s = "You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI" + \
+        ", based on the GPT-4 architecture" if model == 'gpt-4' else "" + \
+        ". This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"
     return s.replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -136,7 +138,7 @@ def only_whitelist(func):
 
 async def completion(chat_history, model, chat_id, msg_id): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
-    messages=[{"role": "system", "content": PROMPT()}]
+    messages=[{"role": "system", "content": PROMPT(model)}]
     roles = ["user", "assistant"]
     role_id = 0
     for msg in chat_history:
@@ -221,23 +223,37 @@ async def send_message(chat_id, text, reply_to_message_id):
 @ensure_interval()
 async def edit_message(chat_id, text, message_id):
     logging.info('Editing message: chat_id=%r, message_id=%r, text=%r', chat_id, message_id, text)
-    await application.bot.edit_message_text(
-        text,
-        chat_id=chat_id,
-        message_id=message_id,
-        disable_web_page_preview=True,
-    )
-    logging.info('Message edited: chat_id=%r, message_id=%r', chat_id, message_id)
+    try:
+        await application.bot.edit_message_text(
+            text,
+            chat_id=chat_id,
+            message_id=message_id,
+            disable_web_page_preview=True,
+        )
+    except BadRequest as e:
+        if e.message == 'Message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message':
+            logging.info('Message not modified: chat_id=%r, message_id=%r', chat_id, message_id)
+        else:
+            raise
+    else:
+        logging.info('Message edited: chat_id=%r, message_id=%r', chat_id, message_id)
 
 @retry()
 @ensure_interval()
 async def delete_message(chat_id, message_id):
     logging.info('Deleting message: chat_id=%r, message_id=%r', chat_id, message_id)
-    await application.bot.delete_message(
-        chat_id,
-        message_id,
-    )
-    logging.info('Message deleted: chat_id=%r, message_id=%r', chat_id, message_id)
+    try:
+        await application.bot.delete_message(
+            chat_id,
+            message_id,
+        )
+    except BadRequest as e:
+        if e.message == 'Message to delete not found':
+            logging.info('Message to delete not found: chat_id=%r, message_id=%r', chat_id, message_id)
+        else:
+            raise
+    else:
+        logging.info('Message deleted: chat_id=%r, message_id=%r', chat_id, message_id)
 
 class BotReplyMessages:
     def __init__(self, chat_id, orig_msg_id, prefix):
