@@ -15,7 +15,7 @@ ADMIN_ID = 71863318
 DEFAULT_MODEL = "gpt-4"
 def PROMPT(model):
     s = "You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI" + \
-        ", based on the GPT-4 architecture" if model == 'gpt-4' else "" + \
+        (", based on the GPT-4 architecture" if model == 'gpt-4' else "") + \
         ". This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"
     return s.replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
 
