@@ -26,6 +26,7 @@ TELEGRAM_LENGTH_LIMIT = 4096
 TELEGRAM_MIN_INTERVAL = 3
 OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 10
+FIRST_BATCH_DELAY = 1
 
 telegram_last_timestamp = None
 telegram_rate_limit_lock = asyncio.Lock()
@@ -347,9 +348,13 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
                 stream = completion(chat_history, model, chat_id, msg_id)
+                first_update_timestamp = None
                 async for delta in stream:
                     reply += delta
-                    await replymsgs.update(reply + ' [!Generating...]')
+                    if first_update_timestamp is None:
+                        first_update_timestamp = time.time()
+                    if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
+                        await replymsgs.update(reply + ' [!Generating...]')
                 await replymsgs.update(reply)
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
