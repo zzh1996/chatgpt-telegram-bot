@@ -13,11 +13,6 @@ from telegram.error import RetryAfter, NetworkError, BadRequest
 
 ADMIN_ID = 71863318
 DEFAULT_MODEL = "gpt-4"
-def PROMPT(model):
-    s = "You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI" + \
-        (", based on the GPT-4 architecture" if model == 'gpt-4' else "") + \
-        ". This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"
-    return s.replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -137,9 +132,9 @@ def only_whitelist(func):
         await func(update, context)
     return new_func
 
-async def completion(chat_history, model, chat_id, msg_id): # chat_history = [user, ai, user, ai, ..., user]
+async def completion(chat_history, model, chat_id, msg_id, system_prompt): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
-    messages=[{"role": "system", "content": PROMPT(model)}]
+    messages=[{"role": "system", "content": system_prompt}]
     roles = ["user", "assistant"]
     role_id = 0
     for msg in chat_history:
@@ -164,15 +159,12 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
 def construct_chat_history(chat_id, msg_id):
     messages = []
     should_be_bot = False
-    model = DEFAULT_MODEL
     while True:
         key = repr((chat_id, msg_id))
         if key not in db:
             logging.error('History message not found (chat_id=%r, msg_id=%r)', chat_id, msg_id)
             return None, None
-        is_bot, text, reply_id, *params = db[key]
-        if params:
-            model = params[0]
+        is_bot, text, reply_id, model, system_prompt = db[key]
         if is_bot != should_be_bot:
             logging.error('Role does not match (chat_id=%r, msg_id=%r)', chat_id, msg_id)
             return None, None
@@ -184,7 +176,7 @@ def construct_chat_history(chat_id, msg_id):
     if len(messages) % 2 != 1:
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
         return None, None
-    return messages[::-1], model
+    return messages[::-1], model, system_prompt
 
 @only_admin
 async def add_whitelist_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -321,23 +313,29 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_to_message = update.message.reply_to_message
     reply_to_id = None
     model = DEFAULT_MODEL
+    system_prompt = None
     if reply_to_message is not None and update.message.reply_to_message.from_user.id == bot_id: # user reply to bot message
         reply_to_id = reply_to_message.message_id
         await pending_reply_manager.wait_for((chat_id, reply_to_id))
-    elif text.startswith('$'): # new message
-        if text.startswith('$'):
-            if text.startswith('$$'):
-                text = text[2:]
+    elif text.startswith('s$'): # new message
+        if text.startswith('s$'):
+            if text.startswith('s$$'):
+                text = text[3:]
                 model = "gpt-3.5-turbo"
             else:
-                text = text[1:]
+                text = text[2:]
+        splits = text.split('$$$', 1)
+        if len(splits) != 2:
+            await send_message(update.effective_chat.id, 'Usage: s$system_prompt$$$user_prompt or s$$system_prompt$$$user_prompt', update.message.message_id)
+            return
+        system_prompt, text = splits
     else: # not reply or new message to bot
         if update.effective_chat.id == update.message.from_user.id: # if in private chat, send hint
             await send_message(update.effective_chat.id, 'Please start a new conversation with $ or reply to a bot message', update.message.message_id)
         return
-    db[repr((chat_id, msg_id))] = (False, text, reply_to_id, model)
+    db[repr((chat_id, msg_id))] = (False, text, reply_to_id, model, system_prompt)
 
-    chat_history, model = construct_chat_history(chat_id, msg_id)
+    chat_history, model, system_prompt = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
         await send_message(update.effective_chat.id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", update.message.message_id)
         return
@@ -347,7 +345,7 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = ''
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
-                stream = completion(chat_history, model, chat_id, msg_id)
+                stream = completion(chat_history, model, chat_id, msg_id, system_prompt)
                 first_update_timestamp = None
                 async for delta in stream:
                     reply += delta
@@ -358,7 +356,7 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await replymsgs.update(reply)
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
-                    db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
+                    db[repr((chat_id, message_id))] = (True, reply, msg_id, model, system_prompt)
                 return
             except Exception as e:
                 error_cnt += 1
@@ -393,7 +391,7 @@ if __name__ == '__main__':
     rootLogger.addHandler(consoleHandler)
 
     with shelve.open('db') as db:
-        # db[(chat_id, msg_id)] = (is_bot, text, reply_id, model)
+        # db[(chat_id, msg_id)] = (is_bot, text, reply_id, model, system_prompt)
         # db['whitelist'] = set(whitelist_chat_ids)
         if 'whitelist' not in db:
             db['whitelist'] = {ADMIN_ID}
