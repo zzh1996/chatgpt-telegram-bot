@@ -111,7 +111,7 @@ def only_admin(func):
         if update.message is None:
             return
         if update.message.from_user.id != ADMIN_ID:
-            send_message(update.effective_chat.id, 'Only admin can use this command', update.message.message_id)
+            await send_message(update.effective_chat.id, 'Only admin can use this command', update.message.message_id)
             return
         await func(update, context)
     return new_func
@@ -121,7 +121,7 @@ def only_private(func):
         if update.message is None:
             return
         if update.effective_chat.id != update.message.from_user.id:
-            send_message(update.effective_chat.id, 'This command only works in private chat', update.message.message_id)
+            await send_message(update.effective_chat.id, 'This command only works in private chat', update.message.message_id)
             return
         await func(update, context)
     return new_func
@@ -132,7 +132,7 @@ def only_whitelist(func):
             return
         if not is_whitelist(update.effective_chat.id):
             if update.effective_chat.id == update.message.from_user.id:
-                send_message(update.effective_chat.id, 'This chat is not in whitelist', update.message.message_id)
+                await send_message(update.effective_chat.id, 'This chat is not in whitelist', update.message.message_id)
             return
         await func(update, context)
     return new_func
