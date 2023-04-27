@@ -106,7 +106,7 @@ def only_admin(func):
         if update.message is None:
             return
         if update.message.from_user.id != ADMIN_ID:
-            send_message(update.effective_chat.id, 'Only admin can use this command', update.message.message_id)
+            await send_message(update.effective_chat.id, 'Only admin can use this command', update.message.message_id)
             return
         await func(update, context)
     return new_func
@@ -116,7 +116,7 @@ def only_private(func):
         if update.message is None:
             return
         if update.effective_chat.id != update.message.from_user.id:
-            send_message(update.effective_chat.id, 'This command only works in private chat', update.message.message_id)
+            await send_message(update.effective_chat.id, 'This command only works in private chat', update.message.message_id)
             return
         await func(update, context)
     return new_func
@@ -127,7 +127,7 @@ def only_whitelist(func):
             return
         if not is_whitelist(update.effective_chat.id):
             if update.effective_chat.id == update.message.from_user.id:
-                send_message(update.effective_chat.id, 'This chat is not in whitelist', update.message.message_id)
+                await send_message(update.effective_chat.id, 'This chat is not in whitelist', update.message.message_id)
             return
         await func(update, context)
     return new_func
@@ -141,7 +141,7 @@ async def completion(chat_history, model, chat_id, msg_id, system_prompt): # cha
         messages.append({"role": roles[role_id], "content": msg})
         role_id = 1 - role_id
     logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, messages)
-    stream = await openai.ChatCompletion.acreate(model=model, messages=messages, stream=True)
+    stream = await openai.ChatCompletion.acreate(model=model, messages=messages, stream=True, request_timeout=15)
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, json.dumps(response, ensure_ascii=False))
         obj = response['choices'][0]
@@ -273,6 +273,8 @@ class BotReplyMessages:
             text = text[self.msg_len:]
         if text:
             slices.append(text)
+        if not slices:
+            slices = [''] # deal with empty message
 
         for i in range(min(len(slices), len(self.replied_msgs))):
             msg_id, msg_text = self.replied_msgs[i]
