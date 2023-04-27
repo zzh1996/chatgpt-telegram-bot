@@ -281,6 +281,8 @@ class BotReplyMessages:
             text = text[self.msg_len:]
         if text:
             slices.append(text)
+        if not slices:
+            slices = [''] # deal with empty message
 
         for i in range(min(len(slices), len(self.replied_msgs))):
             msg_id, msg_text = self.replied_msgs[i]
