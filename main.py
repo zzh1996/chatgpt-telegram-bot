@@ -146,7 +146,7 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
         messages.append({"role": roles[role_id], "content": msg})
         role_id = 1 - role_id
     logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, messages)
-    stream = await openai.ChatCompletion.acreate(model=model, messages=messages, stream=True)
+    stream = await openai.ChatCompletion.acreate(model=model, messages=messages, stream=True, request_timeout=15)
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, json.dumps(response, ensure_ascii=False))
         obj = response['choices'][0]
