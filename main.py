@@ -380,6 +380,14 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_message(update.effective_chat.id, f'chat_id={update.effective_chat.id} user_id={update.message.from_user.id} is_whitelisted={is_whitelist(update.effective_chat.id)}', update.message.message_id)
 
+async def post_init(application):
+    await application.bot.set_my_commands([
+        ('ping', 'Test bot connectivity'),
+        ('add_whitelist', 'Add this group to whitelist (only admin)'),
+        ('del_whitelist', 'Delete this group from whitelist (only admin)'),
+        ('get_whitelist', 'List groups in whitelist (only admin)'),
+    ])
+
 if __name__ == '__main__':
     logFormatter = logging.Formatter("%(asctime)s %(process)d %(levelname)s %(message)s")
 
@@ -401,7 +409,7 @@ if __name__ == '__main__':
             db['whitelist'] = {ADMIN_ID}
         bot_id = int(TELEGRAM_BOT_TOKEN.split(':')[0])
         pending_reply_manager = PendingReplyManager()
-        application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
+        application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).concurrent_updates(True).build()
         application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), reply_handler))
         application.add_handler(CommandHandler('ping', ping))
         application.add_handler(CommandHandler('add_whitelist', add_whitelist_handler))
