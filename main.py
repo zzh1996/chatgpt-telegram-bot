@@ -12,12 +12,20 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from telegram.error import RetryAfter, NetworkError, BadRequest
 
 ADMIN_ID = 71863318
-DEFAULT_MODEL = "gpt-4"
-def PROMPT(model):
-    s = "You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI" + \
-        (", based on the GPT-4 architecture" if model == 'gpt-4' else "") + \
-        ". This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"
-    return s.replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
+
+MODELS = [
+    {'prefix': '$$', 'model': 'gpt-3.5-turbo-1106', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
+    {'prefix': '3$', 'model': 'gpt-3.5-turbo', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
+    {'prefix': '$', 'model': 'gpt-4-1106-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"'},
+    {'prefix': '4$', 'model': 'gpt-4', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
+]
+DEFAULT_MODEL = 'gpt-4' # For compatibility with the old database format
+
+def get_prompt(model):
+    for m in MODELS:
+        if m['model'] == model:
+            return m['prompt_template'].replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
+    raise ValueError('Model not found')
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -139,7 +147,7 @@ def only_whitelist(func):
 
 async def completion(chat_history, model, chat_id, msg_id): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
-    messages=[{"role": "system", "content": PROMPT(model)}]
+    messages=[{"role": "system", "content": get_prompt(model)}]
     roles = ["user", "assistant"]
     role_id = 0
     for msg in chat_history:
@@ -206,6 +214,13 @@ async def del_whitelist_handler(update: Update, context: ContextTypes.DEFAULT_TY
 @only_private
 async def get_whitelist_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_message(update.effective_chat.id, str(get_whitelist()), update.message.message_id)
+
+@only_whitelist
+async def list_models_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = ''
+    for m in MODELS:
+        text += f'Prefix: "{m["prefix"]}", model: {m["model"]}\n'
+    await send_message(update.effective_chat.id, text, update.message.message_id)
 
 @retry()
 @ensure_interval()
@@ -326,17 +341,16 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if reply_to_message is not None and update.message.reply_to_message.from_user.id == bot_id: # user reply to bot message
         reply_to_id = reply_to_message.message_id
         await pending_reply_manager.wait_for((chat_id, reply_to_id))
-    elif text.startswith('$'): # new message
-        if text.startswith('$'):
-            if text.startswith('$$'):
-                text = text[2:]
-                model = "gpt-3.5-turbo"
-            else:
-                text = text[1:]
-    else: # not reply or new message to bot
-        if update.effective_chat.id == update.message.from_user.id: # if in private chat, send hint
-            await send_message(update.effective_chat.id, 'Please start a new conversation with $ or reply to a bot message', update.message.message_id)
-        return
+    else: # new message
+        for m in MODELS:
+            if text.startswith(m['prefix']):
+                text = text[len(m['prefix']):]
+                model = m['model']
+                break
+        else: # not reply or new message to bot
+            if update.effective_chat.id == update.message.from_user.id: # if in private chat, send hint
+                await send_message(update.effective_chat.id, 'Please start a new conversation with $ or reply to a bot message', update.message.message_id)
+            return
     db[repr((chat_id, msg_id))] = (False, text, reply_to_id, model)
 
     chat_history, model = construct_chat_history(chat_id, msg_id)
@@ -383,6 +397,7 @@ async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def post_init(application):
     await application.bot.set_my_commands([
         ('ping', 'Test bot connectivity'),
+        ('list_models', 'List supported models'),
         ('add_whitelist', 'Add this group to whitelist (only admin)'),
         ('del_whitelist', 'Delete this group from whitelist (only admin)'),
         ('get_whitelist', 'List groups in whitelist (only admin)'),
@@ -404,6 +419,7 @@ if __name__ == '__main__':
 
     with shelve.open('db') as db:
         # db[(chat_id, msg_id)] = (is_bot, text, reply_id, model)
+        # compatible old db format: db[(chat_id, msg_id)] = (is_bot, text, reply_id)
         # db['whitelist'] = set(whitelist_chat_ids)
         if 'whitelist' not in db:
             db['whitelist'] = {ADMIN_ID}
@@ -415,4 +431,5 @@ if __name__ == '__main__':
         application.add_handler(CommandHandler('add_whitelist', add_whitelist_handler))
         application.add_handler(CommandHandler('del_whitelist', del_whitelist_handler))
         application.add_handler(CommandHandler('get_whitelist', get_whitelist_handler))
+        application.add_handler(CommandHandler('list_models', list_models_handler))
         application.run_polling()
