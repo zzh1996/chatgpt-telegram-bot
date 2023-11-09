@@ -3,11 +3,12 @@ import aioboto3
 import json
 from bs4 import BeautifulSoup
 import os
+import sys
 
 class Browsing:
     functions = [{
         "name": "open_url",
-        "description": "Open a given URL and fetch the entire page as text",
+        "description": "Open a given URL and fetch the entire page as text, with hyperlinks converted into Markdown format",
         "parameters": {
             "type": "object",
             "properties": {
@@ -38,11 +39,24 @@ class Browsing:
             )
             data = await response['Payload'].read()
         data = json.loads(data.decode())
+        if 'data' not in data:
+            return {'error': data}
         html = data['data']
 
         soup = BeautifulSoup(html, "lxml")
-        for script in soup(["script", "style"]):
-            script.extract()
+        for script in soup(["script", "style", "noscript"]):
+            script.decompose()
+
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if len(href) < 256:
+                a.string = f"[{a.get_text().strip()}]({href})"
+
+        for img in soup.find_all("img", src=True):
+            src = img["src"]
+            if not src.startswith("data:") and len(src) < 256:
+                img.string = f"![{img.get('alt', 'img')}]({src})"
+
         text = soup.get_text()
         newlines = []
         for line in text.splitlines():
@@ -54,7 +68,10 @@ class Browsing:
 
 async def main():
     b = Browsing()
-    print(await b.open_url('https://www.ustc.edu.cn/'))
+    url = 'https://www.ustc.edu.cn/'
+    if len(sys.argv) > 1:
+        url = sys.argv[1]
+    print(await b.open_url(url))
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

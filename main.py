@@ -415,6 +415,10 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     msg = {"role": "assistant", "content": reply}
                     if function_call is not None:
                         msg['function_call'] = function_call
+                    enc = tiktoken.encoding_for_model(model)
+                    estimated_input_tokens = len(enc.encode(json.dumps(chat_history + new_messages, ensure_ascii=False)))
+                    estimated_output_tokens = len(enc.encode(json.dumps(msg, ensure_ascii=False)))
+                    estimated_dollars = estimated_input_tokens * 1e-5 + estimated_output_tokens * 3e-5
                     new_messages.append(msg)
                     if function_call is not None:
                         try:
@@ -445,6 +449,8 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                         new_messages.append({"role": "function", "name": function_call['name'], "content": call_response})
                                         function_calls_counter += 1
                                         continue_round = True
+                    if estimated_dollars >= 0.1:
+                        reply += f'\n\n[$] Estimated tokens: {estimated_input_tokens / 1000:.1f}K input + {estimated_output_tokens/1000:.1f}K output\n[$] Estimated cost: ${estimated_dollars:.2f} / ¥{estimated_dollars * 7.28:.2f}\n[$] Please note the costs'
                     await replymsgs.update(reply)
                     await replymsgs.finalize()
                     last_msg_id = replymsgs.replied_msgs[-1][0]
