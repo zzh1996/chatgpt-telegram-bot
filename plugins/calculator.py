@@ -78,7 +78,7 @@ def evaluate(node):
 class Calculator:
     functions = [{
         "name": "calc",
-        "description": "Evaluate math expression",
+        "description": "Evaluate Python-style math expression (but not real Python). Allowed operators: +, -, *, /, //, %, **, <<, >>, |, &, ^, ~, pi, e, sqrt, exp, log, sin, cos, tan, asin, acos, atan. Functions are available directly, don't import math.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -94,7 +94,7 @@ class Calculator:
     def calc(self, expr):
         expr = expr.replace('math.', '')
         root = ast.parse(expr, mode='eval')
-        return {"result": str(evaluate(root))}
+        return str(evaluate(root))
 
 if __name__ == '__main__':
     c = Calculator()

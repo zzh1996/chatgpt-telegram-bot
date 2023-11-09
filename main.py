@@ -15,14 +15,15 @@ from telegram.error import RetryAfter, NetworkError, BadRequest
 from plugins.calculator import Calculator
 from plugins.browsing import Browsing
 from plugins.search import Search
+from plugins.youtube import Youtube
 
 ADMIN_ID = 71863318
-DEFAULT_MODEL = "gpt-3.5-turbo-16k"
+DEFAULT_MODEL = "gpt-4-1106-preview"
 TRIGGER = 'p$'
-PLUGINS = [Calculator, Browsing, Search]
+PLUGINS = [Search, Browsing, Youtube, Calculator]
 
 def PROMPT(model):
-    s = "You are ChatGPT Telegram bot with the abilities to search on Google, read web pages and use a calculator. You must use these abilities to answer user's questions. You shouldn't answer or calculate by yourself without these tools. Always search by keywords and don't repeat user's question in search query. Search for \"Bill Gates\" instead of \"Who is Bill Gates\" when user asks \"Who is Bill Gates?\". You should read web pages after searching if they contain information you need. Summarize instead of repeating search results. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"
+    s = "You are ChatGPT Telegram bot with the abilities to search on Google, read web pages, get YouTube transcripts and use a calculator. You must use these abilities to answer user's questions. You shouldn't answer or calculate by yourself without these tools. Always search by keywords and don't repeat user's question in search query. Search for \"Bill Gates\" instead of \"Who is Bill Gates\" when user asks \"Who is Bill Gates?\". You should read web pages after searching if they contain information you need. Summarize results instead of verbatim repetition. Always respond in the same language as the user's questions, even though the search and web pages may be in other languages. If the user asks in Chinese, always answer in Chinese. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"
     return s.replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -34,6 +35,7 @@ OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
 FUNCTION_CALLS_LIMIT = 5
+FUNCTION_CALLS_MAX_TOKENS = 32768
 
 telegram_last_timestamp = None
 telegram_rate_limit_lock = asyncio.Lock()
@@ -53,14 +55,14 @@ class PluginManager:
             return json.dumps({'error': f'Function {func_name} not found'})
         func = self.function_registry[func_name]
         try:
-            params = json.loads(params)
             if asyncio.iscoroutinefunction(func):
                 result = await func(**params)
             else:
                 result = func(**params)
-            return json.dumps(result, ensure_ascii=False)
+            return {'result': result}
         except Exception as e:
-            return json.dumps({'error': traceback.format_exception_only(e)[-1].strip()})
+            logging.exception('Error during function call')
+            return {'error': traceback.format_exception_only(e)[-1].strip()}
 
 class PendingReplyManager:
     def __init__(self):
@@ -415,19 +417,34 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         msg['function_call'] = function_call
                     new_messages.append(msg)
                     if function_call is not None:
-                        reply += f'\n\n[+] Function call: {function_call["name"]}({function_call["arguments"]})'
-                        if function_calls_counter >= FUNCTION_CALLS_LIMIT:
-                            reply += f'\n\n[!] Error: Function calls exceeded limit {FUNCTION_CALLS_LIMIT}, won\'t continue.'
+                        try:
+                            arguments = json.loads(function_call["arguments"])
+                        except Exception as e:
+                            logging.exception('Error decoding json, json: %s', function_call["arguments"])
+                            reply += f'\n\n[!] Function call arguments not valid JSON\nFunction name: {function_call["name"]}\nFunction arguments: {function_call["arguments"]}'
                         else:
-                            reply += f'\nExecuting function call...'
-                            await replymsgs.update(reply)
-                            call_response = await plugin_manager.call(function_call['name'], function_call['arguments'])
-                            enc = tiktoken.encoding_for_model(model)
-                            response_tokens = len(enc.encode(call_response))
-                            new_messages.append({"role": "function", "name": function_call['name'], "content": call_response})
-                            reply += f' Done! (Response {response_tokens} tokens)'
-                            function_calls_counter += 1
-                            continue_round = True
+                            reply += f'\n\n[+] Function call: {function_call["name"]}({json.dumps(arguments, ensure_ascii=False)})'
+                            if function_calls_counter >= FUNCTION_CALLS_LIMIT:
+                                reply += f'\n\n[!] Error: Function calls exceeded limit {FUNCTION_CALLS_LIMIT}, won\'t continue.'
+                            else:
+                                reply += f'\nExecuting function call...'
+                                await replymsgs.update(reply)
+                                call_response = await plugin_manager.call(function_call['name'], arguments)
+                                if 'error' in call_response:
+                                    reply += f'\n\n[!] Error: Function call error: {call_response["error"]}'
+                                else:
+                                    call_response = json.dumps(call_response, ensure_ascii=False)
+                                    enc = tiktoken.encoding_for_model(model)
+                                    response_tokens = len(enc.encode(call_response))
+                                    reply += f' Done! (Response {response_tokens} tokens)'
+                                    if response_tokens <= 100:
+                                        reply += '\nResponse: '+ call_response
+                                    if response_tokens > FUNCTION_CALLS_MAX_TOKENS:
+                                        reply += f'\n\n[!] Error: Function call result exceeded token limit {FUNCTION_CALLS_MAX_TOKENS}, won\'t continue.'
+                                    else:
+                                        new_messages.append({"role": "function", "name": function_call['name'], "content": call_response})
+                                        function_calls_counter += 1
+                                        continue_round = True
                     await replymsgs.update(reply)
                     await replymsgs.finalize()
                     last_msg_id = replymsgs.replied_msgs[-1][0]
