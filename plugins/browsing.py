@@ -50,7 +50,7 @@ class Browsing:
             if newline:
                 newlines.append(newline)
         text = '\n'.join(newlines)
-        return {"result": {"title": data['title'], "content": text}}
+        return {"title": data['title'], "content": text}
 
 async def main():
     b = Browsing()
