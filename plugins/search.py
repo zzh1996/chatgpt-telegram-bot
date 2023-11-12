@@ -2,6 +2,7 @@ import aiohttp
 import asyncio
 import os
 import json
+import sys
 
 class Search:
     functions = [{
@@ -34,11 +35,28 @@ class Search:
             async with session.get(api_url, params=params) as response:
                 response.raise_for_status()
                 results = await response.json()
-                return [{'title': item['title'], 'link': item['link'], 'snippet': item['snippet']} for item in results['items']]
+                # print(json.dumps(results, ensure_ascii=False, indent=2))
+                if 'items' not in results:
+                    return 'No results found. Please change the keyword.'
+                ret = []
+                for item in results['items']:
+                    obj = {}
+                    if 'title' in item:
+                        obj['title'] = item['title']
+                    if 'link' in item:
+                        obj['link'] = item['link']
+                    if 'snippet' in item:
+                        obj['snippet'] = item['snippet']
+                    if len(obj):
+                        ret.append(obj)
+                return ret
 
 async def main():
     s = Search()
-    print(json.dumps(await s.search('ChatGPT'), ensure_ascii=False))
+    keyword = 'ChatGPT'
+    if len(sys.argv) > 1:
+        keyword = sys.argv[1]
+    print(json.dumps(await s.search(keyword), ensure_ascii=False, indent=2))
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

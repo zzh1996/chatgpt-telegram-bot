@@ -2,6 +2,7 @@ import asyncio
 import json
 import yt_dlp
 import tempfile
+import sys
 
 class Youtube:
     functions = [{
@@ -20,6 +21,9 @@ class Youtube:
     }]
 
     async def get_youtube_transcript(self, url):
+        if not yt_dlp.extractor.youtube.YoutubeIE.suitable(url):
+            return {'error': 'URL is not a YouTube Video'}
+
         output = {}
 
         with yt_dlp.YoutubeDL() as ydl:
@@ -80,7 +84,10 @@ class Youtube:
 
 async def main():
     y = Youtube()
-    print(json.dumps(await y.get_youtube_transcript('https://www.youtube.com/watch?v=dQw4w9WgXcQ'), ensure_ascii=False))
+    url = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+    if len(sys.argv) > 1:
+        url = sys.argv[1]
+    print(json.dumps(await y.get_youtube_transcript(url), ensure_ascii=False))
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
