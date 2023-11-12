@@ -36,20 +36,43 @@ class Search:
                 response.raise_for_status()
                 results = await response.json()
                 # print(json.dumps(results, ensure_ascii=False, indent=2))
-                if 'items' not in results:
-                    return 'No results found. Please change the keyword.'
-                ret = []
-                for item in results['items']:
-                    obj = {}
-                    if 'title' in item:
-                        obj['title'] = item['title']
-                    if 'link' in item:
-                        obj['link'] = item['link']
-                    if 'snippet' in item:
-                        obj['snippet'] = item['snippet']
-                    if len(obj):
-                        ret.append(obj)
-                return ret
+                google_results = []
+                if 'items' in results:
+                    for item in results['items']:
+                        obj = {}
+                        if 'title' in item:
+                            obj['title'] = item['title']
+                        if 'link' in item:
+                            obj['link'] = item['link']
+                        if 'snippet' in item:
+                            obj['snippet'] = item['snippet']
+                        if len(obj):
+                            google_results.append(obj)
+
+        subscription_key = os.environ['BING_SEARCH_V7_SUBSCRIPTION_KEY']
+        endpoint = os.environ['BING_SEARCH_V7_ENDPOINT'] + "/v7.0/search"
+        params = {'q': query}
+        headers = {'Ocp-Apim-Subscription-Key': subscription_key}
+
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+            async with session.get(endpoint, headers=headers, params=params) as response:
+                response.raise_for_status()
+                results = await response.json()
+                # print(json.dumps(results, ensure_ascii=False, indent=2))
+                bing_results = []
+                if 'webPages' in results and 'value' in results['webPages']:
+                    for item in results['webPages']['value']:
+                        obj = {}
+                        if 'name' in item:
+                            obj['title'] = item['name']
+                        if 'url' in item:
+                            obj['link'] = item['url']
+                        if 'snippet' in item:
+                            obj['snippet'] = item['snippet']
+                        if len(obj):
+                            bing_results.append(obj)
+
+        return {'google_results': google_results, 'bing_results': bing_results}
 
 async def main():
     s = Search()

@@ -16,3 +16,5 @@ services:
           - aws_region_name=
           - GOOGLE_SEARCH_KEY=
           - GOOGLE_SEARCH_CX=
+          - BING_SEARCH_V7_ENDPOINT=
+          - BING_SEARCH_V7_SUBSCRIPTION_KEY=
