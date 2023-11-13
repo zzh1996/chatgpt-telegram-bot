@@ -326,6 +326,8 @@ async def reply_handler(message):
         if reply_to_message.sender_id == bot_id: # user reply to bot message
             reply_to_id = message.reply_to.reply_to_msg_id
             await pending_reply_manager.wait_for((chat_id, reply_to_id))
+        else:
+            return
     else: # new message
         for m in MODELS:
             if text.startswith(m['prefix']):
