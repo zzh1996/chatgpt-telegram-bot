@@ -6,6 +6,7 @@ import datetime
 import time
 import json
 import traceback
+from collections import defaultdict
 import openai
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -36,8 +37,8 @@ OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
 
-telegram_last_timestamp = None
-telegram_rate_limit_lock = asyncio.Lock()
+telegram_last_timestamp = defaultdict(lambda: None)
+telegram_rate_limit_lock = defaultdict(asyncio.Lock)
 
 class PendingReplyManager:
     def __init__(self):
@@ -60,24 +61,25 @@ class PendingReplyManager:
         await self.messages[reply_id].wait()
         logging.info('PendingReplyManager waiting for %r finished', reply_id)
 
-def within_interval():
+def within_interval(chat_id):
     global telegram_last_timestamp
-    if telegram_last_timestamp is None:
+    if telegram_last_timestamp[chat_id] is None:
         return False
-    remaining_time = telegram_last_timestamp + TELEGRAM_MIN_INTERVAL - time.time()
+    remaining_time = telegram_last_timestamp[chat_id] + TELEGRAM_MIN_INTERVAL - time.time()
     return remaining_time > 0
 
 def ensure_interval(interval=TELEGRAM_MIN_INTERVAL):
     def decorator(func):
         async def new_func(*args, **kwargs):
-            async with telegram_rate_limit_lock:
+            chat_id = args[0]
+            async with telegram_rate_limit_lock[chat_id]:
                 global telegram_last_timestamp
-                if telegram_last_timestamp is not None:
-                    remaining_time = telegram_last_timestamp + interval - time.time()
+                if telegram_last_timestamp[chat_id] is not None:
+                    remaining_time = telegram_last_timestamp[chat_id] + interval - time.time()
                     if remaining_time > 0:
                         await asyncio.sleep(remaining_time)
                 result = await func(*args, **kwargs)
-                telegram_last_timestamp = time.time()
+                telegram_last_timestamp[chat_id] = time.time()
                 return result
         return new_func
     return decorator
@@ -322,7 +324,7 @@ class BotReplyMessages:
 
     async def update(self, text):
         self.text = text
-        if not within_interval():
+        if not within_interval(self.chat_id):
             await self._force_update(self.text)
 
     async def finalize(self):
