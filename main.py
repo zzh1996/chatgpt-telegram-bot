@@ -8,9 +8,7 @@ import json
 import traceback
 from collections import defaultdict
 import openai
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from telegram.error import RetryAfter, NetworkError, BadRequest
+from telethon import TelegramClient, events, errors, functions, types
 
 ADMIN_ID = 71863318
 
@@ -30,6 +28,8 @@ def get_prompt(model):
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
+TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
 
 TELEGRAM_LENGTH_LIMIT = 4096
 TELEGRAM_MIN_INTERVAL = 3
@@ -90,9 +90,7 @@ def retry(max_retry=30, interval=10):
             for _ in range(max_retry - 1):
                 try:
                     return await func(*args, **kwargs)
-                except (RetryAfter, NetworkError) as e:
-                    if isinstance(e, BadRequest):
-                        raise
+                except errors.FloodWaitError as e:
                     logging.exception(e)
                     await asyncio.sleep(interval)
             return await func(*args, **kwargs)
@@ -117,34 +115,28 @@ def get_whitelist():
     return db['whitelist']
 
 def only_admin(func):
-    async def new_func(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.message is None:
+    async def new_func(message):
+        if message.sender_id != ADMIN_ID:
+            await send_message(message.chat_id, 'Only admin can use this command', message.id)
             return
-        if update.message.from_user.id != ADMIN_ID:
-            await send_message(update.effective_chat.id, 'Only admin can use this command', update.message.message_id)
-            return
-        await func(update, context)
+        await func(message)
     return new_func
 
 def only_private(func):
-    async def new_func(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.message is None:
+    async def new_func(message):
+        if message.chat_id != message.sender_id:
+            await send_message(message.chat_id, 'This command only works in private chat', message.id)
             return
-        if update.effective_chat.id != update.message.from_user.id:
-            await send_message(update.effective_chat.id, 'This command only works in private chat', update.message.message_id)
-            return
-        await func(update, context)
+        await func(message)
     return new_func
 
 def only_whitelist(func):
-    async def new_func(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.message is None:
+    async def new_func(message):
+        if not is_whitelist(message.chat_id):
+            if message.chat_id == message.sender_id:
+                await send_message(message.chat_id, 'This chat is not in whitelist', message.id)
             return
-        if not is_whitelist(update.effective_chat.id):
-            if update.effective_chat.id == update.message.from_user.id:
-                await send_message(update.effective_chat.id, 'This chat is not in whitelist', update.message.message_id)
-            return
-        await func(update, context)
+        await func(message)
     return new_func
 
 async def completion(chat_history, model, chat_id, msg_id): # chat_history = [user, ai, user, ai, ..., user]
@@ -197,62 +189,59 @@ def construct_chat_history(chat_id, msg_id):
     return messages[::-1], model
 
 @only_admin
-async def add_whitelist_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_whitelist(update.effective_chat.id):
-        await send_message(update.effective_chat.id, 'Already in whitelist', update.message.message_id)
+async def add_whitelist_handler(message):
+    if is_whitelist(message.chat_id):
+        await send_message(message.chat_id, 'Already in whitelist', message.id)
         return
-    add_whitelist(update.effective_chat.id)
-    await send_message(update.effective_chat.id, 'Whitelist added', update.message.message_id)
+    add_whitelist(message.chat_id)
+    await send_message(message.chat_id, 'Whitelist added', message.id)
 
 @only_admin
-async def del_whitelist_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_whitelist(update.effective_chat.id):
-        await send_message(update.effective_chat.id, 'Not in whitelist', update.message.message_id)
+async def del_whitelist_handler(message):
+    if not is_whitelist(message.chat_id):
+        await send_message(message.chat_id, 'Not in whitelist', message.id)
         return
-    del_whitelist(update.effective_chat.id)
-    await send_message(update.effective_chat.id, 'Whitelist deleted', update.message.message_id)
+    del_whitelist(message.chat_id)
+    await send_message(message.chat_id, 'Whitelist deleted', message.id)
 
 @only_admin
 @only_private
-async def get_whitelist_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_message(update.effective_chat.id, str(get_whitelist()), update.message.message_id)
+async def get_whitelist_handler(message):
+    await send_message(message.chat_id, str(get_whitelist()), message.id)
 
 @only_whitelist
-async def list_models_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def list_models_handler(message):
     text = ''
     for m in MODELS:
         text += f'Prefix: "{m["prefix"]}", model: {m["model"]}\n'
-    await send_message(update.effective_chat.id, text, update.message.message_id)
+    await send_message(message.chat_id, text, message.id)
 
 @retry()
 @ensure_interval()
 async def send_message(chat_id, text, reply_to_message_id):
     logging.info('Sending message: chat_id=%r, reply_to_message_id=%r, text=%r', chat_id, reply_to_message_id, text)
-    msg = await application.bot.send_message(
+    msg = await bot.send_message(
         chat_id,
         text,
-        reply_to_message_id=reply_to_message_id,
-        disable_web_page_preview=True,
+        reply_to=reply_to_message_id,
+        link_preview=False,
     )
-    logging.info('Message sent: chat_id=%r, reply_to_message_id=%r, message_id=%r', chat_id, reply_to_message_id, msg.message_id)
-    return msg.message_id
+    logging.info('Message sent: chat_id=%r, reply_to_message_id=%r, message_id=%r', chat_id, reply_to_message_id, msg.id)
+    return msg.id
 
 @retry()
 @ensure_interval()
 async def edit_message(chat_id, text, message_id):
     logging.info('Editing message: chat_id=%r, message_id=%r, text=%r', chat_id, message_id, text)
     try:
-        await application.bot.edit_message_text(
+        await bot.edit_message(
+            chat_id,
+            message_id,
             text,
-            chat_id=chat_id,
-            message_id=message_id,
-            disable_web_page_preview=True,
+            link_preview=False,
         )
-    except BadRequest as e:
-        if e.message == 'Message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message':
-            logging.info('Message not modified: chat_id=%r, message_id=%r', chat_id, message_id)
-        else:
-            raise
+    except errors.MessageNotModifiedError as e:
+        logging.info('Message not modified: chat_id=%r, message_id=%r', chat_id, message_id)
     else:
         logging.info('Message edited: chat_id=%r, message_id=%r', chat_id, message_id)
 
@@ -260,18 +249,11 @@ async def edit_message(chat_id, text, message_id):
 @ensure_interval()
 async def delete_message(chat_id, message_id):
     logging.info('Deleting message: chat_id=%r, message_id=%r', chat_id, message_id)
-    try:
-        await application.bot.delete_message(
-            chat_id,
-            message_id,
-        )
-    except BadRequest as e:
-        if e.message == 'Message to delete not found':
-            logging.info('Message to delete not found: chat_id=%r, message_id=%r', chat_id, message_id)
-        else:
-            raise
-    else:
-        logging.info('Message deleted: chat_id=%r, message_id=%r', chat_id, message_id)
+    await bot.delete_messages(
+        chat_id,
+        message_id,
+    )
+    logging.info('Message deleted: chat_id=%r, message_id=%r', chat_id, message_id)
 
 class BotReplyMessages:
     def __init__(self, chat_id, orig_msg_id, prefix):
@@ -331,18 +313,19 @@ class BotReplyMessages:
         await self._force_update(self.text)
 
 @only_whitelist
-async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    sender_id = update.message.from_user.id
-    msg_id = update.message.message_id
-    text = update.message.text
+async def reply_handler(message):
+    chat_id = message.chat_id
+    sender_id = message.sender_id
+    msg_id = message.id
+    text = message.message
     logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r', chat_id, sender_id, msg_id, text)
-    reply_to_message = update.message.reply_to_message
     reply_to_id = None
     model = DEFAULT_MODEL
-    if reply_to_message is not None and update.message.reply_to_message.from_user.id == bot_id: # user reply to bot message
-        reply_to_id = reply_to_message.message_id
-        await pending_reply_manager.wait_for((chat_id, reply_to_id))
+    if message.is_reply:
+        reply_to_message = await message.get_reply_message()
+        if reply_to_message.sender_id == bot_id: # user reply to bot message
+            reply_to_id = message.reply_to.reply_to_msg_id
+            await pending_reply_manager.wait_for((chat_id, reply_to_id))
     else: # new message
         for m in MODELS:
             if text.startswith(m['prefix']):
@@ -350,14 +333,14 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 model = m['model']
                 break
         else: # not reply or new message to bot
-            if update.effective_chat.id == update.message.from_user.id: # if in private chat, send hint
-                await send_message(update.effective_chat.id, 'Please start a new conversation with $ or reply to a bot message', update.message.message_id)
+            if chat_id == sender_id: # if in private chat, send hint
+                await send_message(chat_id, 'Please start a new conversation with $ or reply to a bot message', msg_id)
             return
     db[repr((chat_id, msg_id))] = (False, text, reply_to_id, model)
 
     chat_history, model = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
-        await send_message(update.effective_chat.id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", update.message.message_id)
+        await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id)
         return
 
     error_cnt = 0
@@ -393,19 +376,12 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if not will_retry:
                     break
 
-async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_message(update.effective_chat.id, f'chat_id={update.effective_chat.id} user_id={update.message.from_user.id} is_whitelisted={is_whitelist(update.effective_chat.id)}', update.message.message_id)
+async def ping(message):
+    await send_message(message.chat_id, f'chat_id={message.chat_id} user_id={message.sender_id} is_whitelisted={is_whitelist(message.chat_id)}', message.id)
 
-async def post_init(application):
-    await application.bot.set_my_commands([
-        ('ping', 'Test bot connectivity'),
-        ('list_models', 'List supported models'),
-        ('add_whitelist', 'Add this group to whitelist (only admin)'),
-        ('del_whitelist', 'Delete this group from whitelist (only admin)'),
-        ('get_whitelist', 'List groups in whitelist (only admin)'),
-    ])
+async def main():
+    global bot_id, pending_reply_manager, db, bot
 
-if __name__ == '__main__':
     logFormatter = logging.Formatter("%(asctime)s %(process)d %(levelname)s %(message)s")
 
     rootLogger = logging.getLogger()
@@ -427,11 +403,41 @@ if __name__ == '__main__':
             db['whitelist'] = {ADMIN_ID}
         bot_id = int(TELEGRAM_BOT_TOKEN.split(':')[0])
         pending_reply_manager = PendingReplyManager()
-        application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).concurrent_updates(True).build()
-        application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), reply_handler))
-        application.add_handler(CommandHandler('ping', ping))
-        application.add_handler(CommandHandler('add_whitelist', add_whitelist_handler))
-        application.add_handler(CommandHandler('del_whitelist', del_whitelist_handler))
-        application.add_handler(CommandHandler('get_whitelist', get_whitelist_handler))
-        application.add_handler(CommandHandler('list_models', list_models_handler))
-        application.run_polling()
+        async with await TelegramClient('bot', TELEGRAM_API_ID, TELEGRAM_API_HASH).start(bot_token=TELEGRAM_BOT_TOKEN) as bot:
+            bot.parse_mode = None
+            me = await bot.get_me()
+            @bot.on(events.NewMessage)
+            async def process(event):
+                if event.message.chat_id is None:
+                    return
+                if event.message.sender_id is None:
+                    return
+                if event.message.message is None:
+                    return
+                text = event.message.message
+                if text == '/ping' or text == f'/ping@{me.username}':
+                    await ping(event.message)
+                elif text == '/list_models' or text == f'/list_models@{me.username}':
+                    await list_models_handler(event.message)
+                elif text == '/add_whitelist' or text == f'/add_whitelist@{me.username}':
+                    await add_whitelist_handler(event.message)
+                elif text == '/del_whitelist' or text == f'/del_whitelist@{me.username}':
+                    await del_whitelist_handler(event.message)
+                elif text == '/get_whitelist' or text == f'/get_whitelist@{me.username}':
+                    await get_whitelist_handler(event.message)
+                else:
+                    await reply_handler(event.message)
+            assert await bot(functions.bots.SetBotCommandsRequest(
+                scope=types.BotCommandScopeDefault(),
+                lang_code='en',
+                commands=[types.BotCommand(command, description) for command, description in [
+                    ('ping', 'Test bot connectivity'),
+                    ('list_models', 'List supported models'),
+                    ('add_whitelist', 'Add this group to whitelist (only admin)'),
+                    ('del_whitelist', 'Delete this group from whitelist (only admin)'),
+                    ('get_whitelist', 'List groups in whitelist (only admin)'),
+                ]]
+            ))
+            await bot.run_until_disconnected()
+
+asyncio.run(main())
