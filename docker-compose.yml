@@ -11,3 +11,5 @@ services:
         environment:
           - OPENAI_API_KEY=
           - TELEGRAM_BOT_TOKEN=
+          - TELEGRAM_API_ID=
+          - TELEGRAM_API_HASH=
