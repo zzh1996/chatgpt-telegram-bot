@@ -14,7 +14,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import RetryAfter, NetworkError, BadRequest
 
-aclient = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+aclient = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=15.0)
 
 ADMIN_ID = 71863318
 
@@ -160,20 +160,24 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
         messages.append({"role": roles[role_id], "content": msg})
         role_id = 1 - role_id
     logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, messages)
-    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, request_timeout=15)
+    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
     async for response in stream:
-        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, json.dumps(response, ensure_ascii=False))
-        obj = response['choices'][0]
-        if obj['finish_reason'] is not None:
-            assert not obj['delta']
-            if obj['finish_reason'] == 'length':
+        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
+        obj = response.choices[0]
+        if obj.finish_reason is not None:
+            assert not any([
+                obj.delta.content,
+                obj.delta.function_call,
+                obj.delta.role,
+                obj.delta.tool_calls,
+            ])
+            if obj.finish_reason == 'length':
                 yield ' [!Output truncated due to limit]'
             return
-        if 'role' in obj['delta']:
-            if obj['delta']['role'] != 'assistant':
-                raise ValueError("Role error")
-        if 'content' in obj['delta']:
-            yield obj['delta']['content']
+        if obj.delta.role is not None and obj.delta.role != 'assistant':
+            raise ValueError("Role error")
+        if obj.delta.content:
+            yield obj.delta.content
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
