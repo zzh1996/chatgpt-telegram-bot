@@ -7,7 +7,7 @@ import sys
 class Search:
     functions = [{
         "name": "search",
-        "description": "Search on Google and get the search results. Use concise keywords as query.",
+        "description": "Search on Google and Bing and get the search results. Use concise keywords as query.",
         "parameters": {
             "type": "object",
             "properties": {

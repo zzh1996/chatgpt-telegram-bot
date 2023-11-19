@@ -9,9 +9,9 @@
 <script src="https://cdn.jsdelivr.net/npm/marked@10.0.0/marked.min.js" integrity="sha256-bIKiBMzHa5baI+ujwmloDNoVYIRAqwwayycE/XrzpZA=" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked-katex-extension@4.0.4/lib/index.umd.js" integrity="sha256-yTHpO/ggqKcPuX094ehl5nowlkYjrbP+u86AGuuGpOg=" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/vue@3.3.8/dist/vue.global.prod.js" integrity="sha256-Fz2jfy1am+EM0i2otC1YMj7W6kpYuVuLZOzj68Ht5F4=" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked-highlight/lib/index.umd.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/default.min.css">
-<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked-highlight@2.0.7/lib/index.umd.js" integrity="sha384-DAgGIVePEdT5Hi88B2j1DWWpLKFw5iSBetZxKKqp1U7MzJJceULe1M42GDzQSHHv%" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/default.min.css" integrity="sha384-4Y0nObtF3CbKnh+lpzmAVdAMtQXl+ganWiiv73RcGVdRdfVIya8Cao1C8ZsVRRDz" crossorigin="anonymous">
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js" integrity="sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp" crossorigin="anonymous"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.css" integrity="sha256-WAgYcAck1C1/zEl5sBl5cfyhxtLgKGdpI3oKyJffVRI=" crossorigin="anonymous">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha256-UF1fgpAiu3tPJN/uCqEUHNe7pnr+QR0SQDNfgglgtcM=" crossorigin="anonymous">
 
@@ -26,7 +26,7 @@ p {
     margin: 0;
 }
 pre {
-    text-wrap: wrap;
+    white-space: pre-wrap;
 }
 .message {
     list-style: none;
@@ -67,8 +67,8 @@ pre {
         <p class="role">{{ message.role }}</p>
         <button v-if="message.opened===true" class="action" @click="message.opened=false">折叠</button>
         <button v-if="message.opened===false" class="action" @click="message.opened=true">展开</button>
-        <button v-if="message.markdown===true" class="action" @click="message.markdown=false">显示原始内容</button>
-        <button v-if="message.markdown===false" class="action" @click="message.markdown=true">显示渲染结果</button>
+        <button v-if="message.markdown===true" class="action" @click="message.markdown=false">显示 Markdown 原始内容</button>
+        <button v-if="message.markdown===false" class="action" @click="message.markdown=true">显示 Markdown 渲染结果</button>
         <div v-if="message.opened===true" class="content"><pre>{{ message.content }}</pre></div>
         <div v-if="message.opened===false" class="content"><p>{{ message.summary }}</p></div>
         <div v-if="message.markdown===true" class="content" v-html="message.renderedContent"></div>
@@ -128,7 +128,7 @@ function loadMessages(json) {
             });
         }
         if (part.role === 'system') {
-            markdown('System', '#f0f7ff', part.content);
+            json('System', '#f0f7ff', part.content);
         } else if (part.role === 'user') {
             markdown('User', '#fff', part.content);
         } else if (part.role === 'assistant') {
