@@ -7,10 +7,13 @@ import time
 import json
 import traceback
 from collections import defaultdict
-import openai
+from openai import AsyncOpenAI
+
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import RetryAfter, NetworkError, BadRequest
+
+aclient = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 ADMIN_ID = 71863318
 
@@ -28,7 +31,7 @@ def get_prompt(model):
             return m['prompt_template'].replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
     raise ValueError('Model not found')
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 TELEGRAM_LENGTH_LIMIT = 4096
@@ -156,7 +159,7 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
         messages.append({"role": roles[role_id], "content": msg})
         role_id = 1 - role_id
     logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, messages)
-    stream = await openai.ChatCompletion.acreate(model=model, messages=messages, stream=True, request_timeout=15)
+    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, request_timeout=15)
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, json.dumps(response, ensure_ascii=False))
         obj = response['choices'][0]
