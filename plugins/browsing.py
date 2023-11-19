@@ -48,14 +48,17 @@ class Browsing:
             script.decompose()
 
         for a in soup.find_all("a", href=True):
+            text = a.get_text().strip()
+            if not text:
+                continue
             href = a["href"]
             if len(href) < 256:
-                a.string = f"[{a.get_text().strip()}]({href})"
+                a.string = f"[{text}]({href})"
 
-        for img in soup.find_all("img", src=True):
-            src = img["src"]
-            if not src.startswith("data:") and len(src) < 256:
-                img.string = f"![{img.get('alt', 'img')}]({src})"
+        # for img in soup.find_all("img", src=True):
+        #     src = img["src"]
+        #     if not src.startswith("data:") and len(src) < 256:
+        #         img.string = f"![{img.get('alt', 'img')}]({src})"
 
         text = soup.get_text()
         newlines = []

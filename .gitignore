@@ -1,5 +1,10 @@
 .venv
-main.py.log
+*.log
 db
 __pycache__
 *.pyc
+*.session
+.ipynb_checkpoints/
+temp/
+chatlogs/
+docker-compose-prod.yml

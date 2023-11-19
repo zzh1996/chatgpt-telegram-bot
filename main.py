@@ -6,6 +6,7 @@ import datetime
 import time
 import json
 import traceback
+import uuid
 import openai
 import tiktoken
 from telegram import Update
@@ -39,6 +40,15 @@ FUNCTION_CALLS_MAX_TOKENS = 32768
 
 telegram_last_timestamp = None
 telegram_rate_limit_lock = asyncio.Lock()
+
+def dump_and_show(chat_logs, chat_uuid):
+    dir = f'chatlogs/{chat_uuid[:2]}/{chat_uuid[2:4]}'
+    path = f'{dir}/{chat_uuid[4:]}.json'
+    os.makedirs(dir, exist_ok=True)
+    with open(path, 'w') as f:
+        json.dump(chat_logs, f, ensure_ascii=False, indent=2)
+    logging.info('Chat logs saved to %s', path)
+    return f'https://ai.sqrt-1.me/#{chat_uuid}'
 
 class PluginManager:
     def __init__(self, plugin_classes):
@@ -390,6 +400,7 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     function_calls_counter = 0
     continue_round = True
     last_msg_id = msg_id
+    chat_uuid = str(uuid.uuid4())
     while continue_round:
         continue_round = False
         error_cnt = 0
@@ -434,23 +445,27 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 reply += f'\nExecuting function call...'
                                 await replymsgs.update(reply)
                                 call_response = await plugin_manager.call(function_call['name'], arguments)
+                                # call_response can be appended to new_messages safely when there's an error
+                                # because continue_round will be False so new_messages won't be saved into db
+                                call_response_json = json.dumps(call_response, ensure_ascii=False)
+                                new_messages.append({"role": "function", "name": function_call['name'], "content": call_response_json})
                                 if 'error' in call_response:
                                     reply += f'\n\n[!] Error: Function call error: {call_response["error"]}'
                                 else:
-                                    call_response = json.dumps(call_response, ensure_ascii=False)
                                     enc = tiktoken.encoding_for_model(model)
-                                    response_tokens = len(enc.encode(call_response))
+                                    response_tokens = len(enc.encode(call_response_json))
                                     reply += f' Done! (Response {response_tokens} tokens)'
                                     if response_tokens <= 100:
-                                        reply += '\nResponse: '+ call_response
+                                        reply += '\nResponse: '+ call_response_json
                                     if response_tokens > FUNCTION_CALLS_MAX_TOKENS:
                                         reply += f'\n\n[!] Error: Function call result exceeded token limit {FUNCTION_CALLS_MAX_TOKENS}, won\'t continue.'
                                     else:
-                                        new_messages.append({"role": "function", "name": function_call['name'], "content": call_response})
                                         function_calls_counter += 1
                                         continue_round = True
                     if estimated_dollars >= 0.1:
-                        reply += f'\n\n[$] Estimated tokens: {estimated_input_tokens / 1000:.1f}K input + {estimated_output_tokens/1000:.1f}K output\n[$] Estimated cost: ${estimated_dollars:.2f} / ¥{estimated_dollars * 7.28:.2f}\n[$] Please note the costs'
+                        reply += f'\n\n[$] Estimated tokens: {estimated_input_tokens / 1000:.1f}K input + {estimated_output_tokens/1000:.1f}K output\n[$] Estimated cost（本次请求成本）: ${estimated_dollars:.2f} / ¥{estimated_dollars * 7.28:.2f}\n[$] Please note the costs 请注意费用消耗'
+                    link = dump_and_show(chat_history + new_messages, chat_uuid)
+                    reply += f'\n\n[+] Chat logs: {link}'
                     await replymsgs.update(reply)
                     await replymsgs.finalize()
                     last_msg_id = replymsgs.replied_msgs[-1][0]

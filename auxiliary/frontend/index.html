@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<!-- Original author: https://github.com/SmartHypercube -->
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat Logs</title>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js" integrity="sha256-6ksJCCykugrnG+ZDGgl2eHUdBFO5xSpNLHw5ohZu2fw=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@10.0.0/marked.min.js" integrity="sha256-bIKiBMzHa5baI+ujwmloDNoVYIRAqwwayycE/XrzpZA=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked-katex-extension@4.0.4/lib/index.umd.js" integrity="sha256-yTHpO/ggqKcPuX094ehl5nowlkYjrbP+u86AGuuGpOg=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/vue@3.3.8/dist/vue.global.prod.js" integrity="sha256-Fz2jfy1am+EM0i2otC1YMj7W6kpYuVuLZOzj68Ht5F4=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked-highlight/lib/index.umd.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/default.min.css">
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.css" integrity="sha256-WAgYcAck1C1/zEl5sBl5cfyhxtLgKGdpI3oKyJffVRI=" crossorigin="anonymous">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha256-UF1fgpAiu3tPJN/uCqEUHNe7pnr+QR0SQDNfgglgtcM=" crossorigin="anonymous">
+
+<style>
+body {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 10em;
+    color: #333;
+}
+p {
+    margin: 0;
+}
+pre {
+    text-wrap: wrap;
+}
+.message {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 1em;
+    padding: 1.5em max(2em, calc(50% - 21.5em)) 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+.role {
+    font-weight: bold;
+}
+.content {
+    width: 100%;
+    line-height: 1.75;
+    word-break: break-all;
+}
+/* 利用 margin collapse 确保 content 上方至少有 1em 的边距 */
+.content::before {
+    content: '';
+    display: block;
+    margin-bottom: 1em;
+}
+/* 利用 margin collapse 确保 content 下方至少有 1.5em 的边距 */
+.content::after {
+    content: '';
+    display: block;
+    margin-top: 1.5em;
+}
+.content p {
+    margin: 1em 0;
+}
+</style>
+
+<template id="template">
+    <div v-for="message in messages" class="message" :style="{backgroundColor: message.color}">
+        <p class="role">{{ message.role }}</p>
+        <button v-if="message.opened===true" class="action" @click="message.opened=false">折叠</button>
+        <button v-if="message.opened===false" class="action" @click="message.opened=true">展开</button>
+        <button v-if="message.markdown===true" class="action" @click="message.markdown=false">显示原始内容</button>
+        <button v-if="message.markdown===false" class="action" @click="message.markdown=true">显示渲染结果</button>
+        <div v-if="message.opened===true" class="content"><pre>{{ message.content }}</pre></div>
+        <div v-if="message.opened===false" class="content"><p>{{ message.summary }}</p></div>
+        <div v-if="message.markdown===true" class="content" v-html="message.renderedContent"></div>
+        <div v-if="message.markdown===false" class="content"><pre>{{ message.content }}</pre></div>
+    </div>
+</template>
+
+<script>
+'use strict';
+marked.use(markedKatex({
+    throwOnError: false,
+    strict: 'ignore',
+    trust: false,
+}));
+marked.use({
+    breaks: true,
+    gfm: true,
+    silent: true,
+});
+const {markedHighlight} = globalThis.markedHighlight;
+marked.use(markedHighlight({
+    langPrefix: 'hljs language-',
+    highlight(code, lang) {
+        const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+        return hljs.highlight(code, { language }).value;
+    }
+}))
+
+function loadMessages(json) {
+    const messages = [];
+    for (const part of json) {
+        function markdown(role, color, content) {
+            messages.push({
+                role,
+                color,
+                content,
+                renderedContent: DOMPurify.sanitize(marked.parse(content)),
+                markdown: true,
+            });
+        }
+        function parseAndFormatJSON(inputString) {
+            try {
+                const jsonObj = JSON.parse(inputString);
+                const formattedJSON = JSON.stringify(jsonObj, null, 2);
+                return formattedJSON;
+            } catch (e) {
+                return inputString;
+            }
+        }
+        function json(role, color, content) {
+            messages.push({
+                role,
+                color,
+                content: parseAndFormatJSON(content),
+                summary: `（${content.length} 字符）`,
+                opened: content.length < 300,
+            });
+        }
+        if (part.role === 'system') {
+            markdown('System', '#f0f7ff', part.content);
+        } else if (part.role === 'user') {
+            markdown('User', '#fff', part.content);
+        } else if (part.role === 'assistant') {
+            if (part.content !== "" || part.function_call === undefined) {
+                markdown('Assistant', '#f7f7f7', part.content);
+            }
+        } else if (part.role === 'function') {
+            json(`Function call result: ${part.name}()`, '#fff7f0', part.content);
+        } else {
+            markdown(`Unknown ${part.role}`, '#fff', part.content);
+        }
+        if (part.function_call !== undefined) {
+            json(`Function call: ${part.function_call.name}()`, '#fff0f7', part.function_call.arguments);
+        }
+    }
+    return messages;
+}
+
+addEventListener('DOMContentLoaded', async () => {
+    const chatUUID = location.hash ? location.hash.slice(1) : prompt('Chat UUID:');
+    const url = `${chatUUID.slice(0, 2)}/${chatUUID.slice(2, 4)}/${chatUUID.slice(4)}.json`
+    let json;
+    try {
+        json = await (await fetch(url)).json();
+    } catch (e) {
+        alert('加载失败');
+        return;
+    }
+    const messages = loadMessages(json);
+    Vue.createApp({
+        data() {
+            return {
+                messages,
+            };
+        },
+        template: '#template',
+    }).mount('body');
+});
+</script>
+
+</head>
+<body>
+</body>
+</html>
