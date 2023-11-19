@@ -7,6 +7,7 @@ import time
 import json
 import traceback
 from collections import defaultdict
+import openai
 from openai import AsyncOpenAI
 
 from telegram import Update
