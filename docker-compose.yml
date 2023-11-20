@@ -8,6 +8,7 @@ services:
         command: python main.py
         working_dir: /bot
         restart: always
+        init: true
         environment:
           - OPENAI_API_KEY=
           - TELEGRAM_BOT_TOKEN=
@@ -18,3 +19,4 @@ services:
           - GOOGLE_SEARCH_CX=
           - BING_SEARCH_V7_ENDPOINT=
           - BING_SEARCH_V7_SUBSCRIPTION_KEY=
+          - WOLFRAM_ALPHA_APP_ID=
