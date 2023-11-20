@@ -39,7 +39,7 @@ async def main():
     input = 'integral sin(x)/x'
     if len(sys.argv) > 1:
         input = sys.argv[1]
-    print(w.wolfram_alpha(input)['result'])
+    print((await w.wolfram_alpha(input))['result'])
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
