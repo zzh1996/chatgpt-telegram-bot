@@ -20,7 +20,7 @@ class Youtube:
         }
     }]
 
-    async def get_youtube_transcript(self, url):
+    def _get_youtube_transcript(self, url):
         if not yt_dlp.extractor.youtube.YoutubeIE.suitable(url):
             return {'error': 'URL is not a YouTube Video'}
 
@@ -81,6 +81,10 @@ class Youtube:
         output['transcript'] = subtitle_text
 
         return output
+
+    async def get_youtube_transcript(self, url):
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, lambda: self._get_youtube_transcript(url))
 
 async def main():
     y = Youtube()
