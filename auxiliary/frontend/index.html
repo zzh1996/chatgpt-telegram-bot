@@ -132,16 +132,23 @@ function loadMessages(json) {
         } else if (part.role === 'user') {
             markdown('User', '#fff', part.content);
         } else if (part.role === 'assistant') {
-            if (part.content !== "" || part.function_call === undefined) {
+            if (part.content !== "" || (part.function_call === undefined && part.tool_calls === undefined)) {
                 markdown('Assistant', '#f7f7f7', part.content);
             }
         } else if (part.role === 'function') {
             json(`Function call result: ${part.name}()`, '#fff7f0', part.content);
+        } else if (part.role === 'tool') {
+            json(`Tool call result: ${part.name}() id=${part.tool_call_id}`, '#fff7f0', part.content);
         } else {
             markdown(`Unknown ${part.role}`, '#fff', part.content);
         }
         if (part.function_call !== undefined) {
             json(`Function call: ${part.function_call.name}()`, '#fff0f7', part.function_call.arguments);
+        }
+        if (part.tool_calls !== undefined) {
+            for (const tool_call of part.tool_calls) {
+                json(`Tool call: ${tool_call.function.name}() id=${tool_call.id}`, '#fff0f7', tool_call.function.arguments);
+            }
         }
     }
     return messages;

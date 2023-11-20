@@ -1,2 +1,2 @@
 FROM python:3.11
-RUN pip install python-telegram-bot==20.2 git+https://github.com/zzh1996/openai-python.git@fix aioboto3 beautifulsoup4 lxml tiktoken yt-dlp
+RUN pip install python-telegram-bot==20.2 openai==1.3.3 aioboto3 beautifulsoup4 lxml tiktoken yt-dlp

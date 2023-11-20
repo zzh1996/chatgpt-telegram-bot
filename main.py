@@ -7,6 +7,7 @@ import time
 import json
 import traceback
 import uuid
+from collections import defaultdict
 import openai
 import tiktoken
 from telegram import Update
@@ -27,7 +28,7 @@ def PROMPT(model):
     s = "You are ChatGPT Telegram bot with the abilities to search on Google and Bing, read web pages, get YouTube transcripts and use a calculator. You must use these abilities to answer user's questions. You shouldn't answer or calculate by yourself without these tools. Always search by keywords and don't repeat user's question in search query. Search for \"Bill Gates\" instead of \"Who is Bill Gates\" when user asks \"Who is Bill Gates?\". You should read web pages after searching if they contain information you need. Summarize results instead of verbatim repetition. Always respond in the same language as the user's questions, even though the search and web pages may be in other languages. If the user asks in Chinese, please answer in Chinese, and if the user asks in English, please answer in English. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"
     return s.replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+aclient = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 TELEGRAM_LENGTH_LIMIT = 4096
@@ -35,11 +36,11 @@ TELEGRAM_MIN_INTERVAL = 3
 OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
-FUNCTION_CALLS_LIMIT = 5
-FUNCTION_CALLS_MAX_TOKENS = 32768
+TOOL_CALLS_LIMIT = 5
+TOOL_CALLS_MAX_TOKENS = 32768
 
-telegram_last_timestamp = None
-telegram_rate_limit_lock = asyncio.Lock()
+telegram_last_timestamp = defaultdict(lambda: None)
+telegram_rate_limit_lock = defaultdict(asyncio.Lock)
 
 def dump_and_show(chat_logs, chat_uuid):
     dir = f'chatlogs/{chat_uuid[:2]}/{chat_uuid[2:4]}'
@@ -95,24 +96,25 @@ class PendingReplyManager:
         await self.messages[reply_id].wait()
         logging.info('PendingReplyManager waiting for %r finished', reply_id)
 
-def within_interval():
+def within_interval(chat_id):
     global telegram_last_timestamp
-    if telegram_last_timestamp is None:
+    if telegram_last_timestamp[chat_id] is None:
         return False
-    remaining_time = telegram_last_timestamp + TELEGRAM_MIN_INTERVAL - time.time()
+    remaining_time = telegram_last_timestamp[chat_id] + TELEGRAM_MIN_INTERVAL - time.time()
     return remaining_time > 0
 
 def ensure_interval(interval=TELEGRAM_MIN_INTERVAL):
     def decorator(func):
         async def new_func(*args, **kwargs):
-            async with telegram_rate_limit_lock:
+            chat_id = args[0]
+            async with telegram_rate_limit_lock[chat_id]:
                 global telegram_last_timestamp
-                if telegram_last_timestamp is not None:
-                    remaining_time = telegram_last_timestamp + interval - time.time()
+                if telegram_last_timestamp[chat_id] is not None:
+                    remaining_time = telegram_last_timestamp[chat_id] + interval - time.time()
                     if remaining_time > 0:
                         await asyncio.sleep(remaining_time)
                 result = await func(*args, **kwargs)
-                telegram_last_timestamp = time.time()
+                telegram_last_timestamp[chat_id] = time.time()
                 return result
         return new_func
     return decorator
@@ -180,41 +182,56 @@ def only_whitelist(func):
         await func(update, context)
     return new_func
 
-async def completion(messages, model, chat_id, msg_id, functions, function_call=None):
+async def completion(messages, model, chat_id, msg_id, functions, tool_choice=None):
     logging.info('Request (chat_id=%r, msg_id=%r, model=%r, functions=%r): %s', chat_id, msg_id, model, functions, messages)
     params = {
         'model': model,
         'messages': messages,
         'stream': True,
-        'request_timeout': 15,
-        'functions': functions,
+        'tools': [{"type": "function", "function": f} for f in functions],
     }
-    if function_call is not None:
-        params['function_call'] = function_call
-    stream = await openai.ChatCompletion.acreate(**params)
-    function_call = {'name': None, 'arguments': ''}
+    if tool_choice is not None:
+        params['tool_choice'] = tool_choice
+    stream = await aclient.chat.completions.create(**params)
+    tool_calls = []
     async for response in stream:
-        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, json.dumps(response, ensure_ascii=False))
-        obj = response['choices'][0]
-        if obj['finish_reason'] is not None:
-            assert not obj['delta']
-            if obj['finish_reason'] == 'length':
+        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
+        obj = response.choices[0]
+        assert obj.delta.function_call is None # function_call is deprecated
+        if obj.finish_reason is not None:
+            assert obj.delta.content is None and obj.delta.role is None and obj.delta.tool_calls is None
+            if obj.finish_reason == 'length':
                 yield ' [!Output truncated due to limit]'
-            if obj['finish_reason'] == 'function_call':
-                yield function_call
+            elif obj.finish_reason == 'tool_calls':
+                yield tool_calls
+            else:
+                assert obj.finish_reason == 'stop'
             return
-        if 'role' in obj['delta']:
-            if obj['delta']['role'] != 'assistant':
+        if obj.delta.role is not None:
+            if obj.delta.role != 'assistant':
                 raise ValueError("Role error")
-        if 'content' in obj['delta'] and obj['delta']['content'] is not None:
-            yield obj['delta']['content']
-        if 'function_call' in obj['delta']:
-            if 'name' in obj['delta']['function_call']:
-                assert function_call['name'] is None
-                assert obj['delta']['function_call']['arguments'] == ''
-                function_call['name'] = obj['delta']['function_call']['name']
-            if 'arguments' in obj['delta']['function_call']:
-                function_call['arguments'] += obj['delta']['function_call']['arguments']
+        if obj.delta.content is not None:
+            yield obj.delta.content
+        if obj.delta.tool_calls is not None:
+            for tool_call in obj.delta.tool_calls:
+                if tool_call.index == len(tool_calls): # new tool call
+                    assert tool_call.type == 'function'
+                    assert tool_call.id is not None
+                    assert tool_call.function.name is not None
+                    tool_calls.append({
+                        'id': tool_call.id,
+                        'type': tool_call.type,
+                        'function': {
+                            'name': tool_call.function.name,
+                            'arguments': tool_call.function.arguments
+                        }
+                    })
+                else: # existing tool call
+                    assert tool_call.index + 1 == len(tool_calls)
+                    assert tool_call.type is None
+                    assert tool_call.id is None
+                    assert tool_call.function.name is None
+                    tool_calls[tool_call.index]['function']['arguments'] += tool_call.function.arguments
 
 def construct_chat_history(chat_id, msg_id):
     model = None
@@ -360,7 +377,7 @@ class BotReplyMessages:
 
     async def update(self, text):
         self.text = text
-        if not within_interval():
+        if not within_interval(self.chat_id):
             await self._force_update(self.text)
 
     async def finalize(self):
@@ -397,7 +414,7 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     new_messages = []
-    function_calls_counter = 0
+    tool_calls_counter = 0
     continue_round = True
     last_msg_id = msg_id
     chat_uuid = str(uuid.uuid4())
@@ -408,12 +425,12 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply = ''
             async with BotReplyMessages(chat_id, last_msg_id, f'[{model}] ') as replymsgs:
                 try:
-                    function_call = None
-                    if function_calls_counter >= FUNCTION_CALLS_LIMIT:
-                        function_call = "none" # tell model not to use function calls anymore
-                    stream = completion(chat_history + new_messages, model, chat_id, last_msg_id, plugin_manager.function_prompt, function_call)
+                    tool_choice = None
+                    if tool_calls_counter >= TOOL_CALLS_LIMIT:
+                        tool_choice = "none" # tell model not to use tool calls anymore
+                    stream = completion(chat_history + new_messages, model, chat_id, last_msg_id, plugin_manager.function_prompt, tool_choice)
                     first_update_timestamp = None
-                    function_call = None
+                    tool_calls = None
                     async for delta in stream:
                         if isinstance(delta, str): # text
                             reply += delta
@@ -421,47 +438,51 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 first_update_timestamp = time.time()
                             if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
                                 await replymsgs.update(reply + ' [!Generating...]')
-                        else: # function call
-                            function_call = delta
+                        else: # tool calls
+                            tool_calls = delta
                     msg = {"role": "assistant", "content": reply}
-                    if function_call is not None:
-                        msg['function_call'] = function_call
+                    if tool_calls is not None:
+                        msg['tool_calls'] = tool_calls
                     enc = tiktoken.encoding_for_model(model)
                     estimated_input_tokens = len(enc.encode(json.dumps(chat_history + new_messages, ensure_ascii=False)))
                     estimated_output_tokens = len(enc.encode(json.dumps(msg, ensure_ascii=False)))
                     estimated_dollars = estimated_input_tokens * 1e-5 + estimated_output_tokens * 3e-5
                     new_messages.append(msg)
-                    if function_call is not None:
-                        try:
-                            arguments = json.loads(function_call["arguments"])
-                        except Exception as e:
-                            logging.exception('Error decoding json, json: %s', function_call["arguments"])
-                            reply += f'\n\n[!] Function call arguments not valid JSON\nFunction name: {function_call["name"]}\nFunction arguments: {function_call["arguments"]}'
+                    if tool_calls is not None:
+                        for tool_call in tool_calls:
+                            name = tool_call["function"]["name"]
+                            arguments_raw = tool_call["function"]["arguments"]
+                            try:
+                                arguments = json.loads(arguments_raw)
+                            except Exception as e:
+                                logging.exception('Error decoding json, json: %s', arguments_raw)
+                                reply += f'\n\n[!] Function call arguments not valid JSON\nFunction name: {name}\nFunction arguments: {arguments_raw}'
+                                break
+                            reply += f'\n\n[+] Function call: {name}({json.dumps(arguments, ensure_ascii=False)})'
+                            if tool_calls_counter >= TOOL_CALLS_LIMIT:
+                                reply += f'\n\n[!] Error: Function calls exceeded limit {TOOL_CALLS_LIMIT}, won\'t continue.'
+                                break
+                            reply += f'\nExecuting function call...'
+                            await replymsgs.update(reply)
+                            call_response = await plugin_manager.call(name, arguments)
+                            # call_response can be appended to new_messages safely when there's an error
+                            # because continue_round will be False so new_messages won't be saved into db
+                            call_response_json = json.dumps(call_response, ensure_ascii=False)
+                            new_messages.append({"role": "tool", "name": name, "content": call_response_json, "tool_call_id": tool_call['id']})
+                            if 'error' in call_response:
+                                reply += f'\n\n[!] Error: Function call error: {call_response["error"]}'
+                                break
+                            enc = tiktoken.encoding_for_model(model)
+                            response_tokens = len(enc.encode(call_response_json))
+                            reply += f' Done! (Response {response_tokens} tokens)'
+                            if response_tokens <= 100:
+                                reply += '\nResponse: '+ call_response_json
+                            if response_tokens > TOOL_CALLS_MAX_TOKENS:
+                                reply += f'\n\n[!] Error: Function call result exceeded token limit {TOOL_CALLS_MAX_TOKENS}, won\'t continue.'
+                                break
+                            tool_calls_counter += 1
                         else:
-                            reply += f'\n\n[+] Function call: {function_call["name"]}({json.dumps(arguments, ensure_ascii=False)})'
-                            if function_calls_counter >= FUNCTION_CALLS_LIMIT:
-                                reply += f'\n\n[!] Error: Function calls exceeded limit {FUNCTION_CALLS_LIMIT}, won\'t continue.'
-                            else:
-                                reply += f'\nExecuting function call...'
-                                await replymsgs.update(reply)
-                                call_response = await plugin_manager.call(function_call['name'], arguments)
-                                # call_response can be appended to new_messages safely when there's an error
-                                # because continue_round will be False so new_messages won't be saved into db
-                                call_response_json = json.dumps(call_response, ensure_ascii=False)
-                                new_messages.append({"role": "function", "name": function_call['name'], "content": call_response_json})
-                                if 'error' in call_response:
-                                    reply += f'\n\n[!] Error: Function call error: {call_response["error"]}'
-                                else:
-                                    enc = tiktoken.encoding_for_model(model)
-                                    response_tokens = len(enc.encode(call_response_json))
-                                    reply += f' Done! (Response {response_tokens} tokens)'
-                                    if response_tokens <= 100:
-                                        reply += '\nResponse: '+ call_response_json
-                                    if response_tokens > FUNCTION_CALLS_MAX_TOKENS:
-                                        reply += f'\n\n[!] Error: Function call result exceeded token limit {FUNCTION_CALLS_MAX_TOKENS}, won\'t continue.'
-                                    else:
-                                        function_calls_counter += 1
-                                        continue_round = True
+                            continue_round = True
                     if estimated_dollars >= 0.1:
                         reply += f'\n\n[$] Estimated tokens: {estimated_input_tokens / 1000:.1f}K input + {estimated_output_tokens/1000:.1f}K output\n[$] Estimated cost（本次请求成本）: ${estimated_dollars:.2f} / ¥{estimated_dollars * 7.28:.2f}\n[$] Please note the costs 请注意费用消耗'
                     link = dump_and_show(chat_history + new_messages, chat_uuid)
@@ -469,14 +490,14 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await replymsgs.update(reply)
                     await replymsgs.finalize()
                     last_msg_id = replymsgs.replied_msgs[-1][0]
-                    if function_call is None:
+                    if tool_calls is None:
                         # update db inside "async with" to ensure db is ready when the pending reply lock is released
                         db[repr((chat_id, last_msg_id))] = new_messages, msg_id
                     break
                 except Exception as e:
                     error_cnt += 1
                     logging.exception('Error (chat_id=%r, msg_id=%r, cnt=%r): %s', chat_id, msg_id, error_cnt, e)
-                    will_retry = not isinstance (e, openai.InvalidRequestError) and error_cnt <= OPENAI_MAX_RETRY
+                    will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
                     error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
                     if will_retry:
                         error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
@@ -490,6 +511,14 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_message(update.effective_chat.id, f'chat_id={update.effective_chat.id} user_id={update.message.from_user.id} is_whitelisted={is_whitelist(update.effective_chat.id)} trigger={TRIGGER}', update.message.message_id)
+
+async def post_init(application):
+    await application.bot.set_my_commands([
+        ('ping', 'Test bot connectivity'),
+        ('add_whitelist', 'Add this group to whitelist (only admin)'),
+        ('del_whitelist', 'Delete this group from whitelist (only admin)'),
+        ('get_whitelist', 'List groups in whitelist (only admin)'),
+    ])
 
 if __name__ == '__main__':
     logFormatter = logging.Formatter("%(asctime)s %(process)d %(levelname)s %(message)s")
@@ -514,7 +543,7 @@ if __name__ == '__main__':
         bot_id = int(TELEGRAM_BOT_TOKEN.split(':')[0])
         pending_reply_manager = PendingReplyManager()
         plugin_manager = PluginManager(PLUGINS)
-        application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
+        application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).concurrent_updates(True).build()
         application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), reply_handler))
         application.add_handler(CommandHandler('ping', ping))
         application.add_handler(CommandHandler('add_whitelist', add_whitelist_handler))
