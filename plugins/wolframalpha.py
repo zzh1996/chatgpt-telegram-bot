@@ -30,9 +30,10 @@ class WolframAlpha:
         }
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
             async with session.get(api_url, params=params) as response:
-                response.raise_for_status()
+                if response.status != 501:
+                    response.raise_for_status()
                 result = await response.text()
-                return {'result': result}
+                return result
 
 async def main():
     w = WolframAlpha()
