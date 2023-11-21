@@ -191,7 +191,6 @@ async def get_whitelist_handler(message):
 
 create_gpt_help_text = '创建新的 GPT\n使用方法：/create [system prompt]\n例如：\n/create 你是一个中英翻译机器人，请把用户输入的内容从中文翻译成英文，或者从英文翻译成中文。请不要输出任何额外信息。'
 
-@only_whitelist
 async def create_gpt(message, text):
     text = text.strip()
     if not text:
