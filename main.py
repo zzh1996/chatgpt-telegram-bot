@@ -2,29 +2,18 @@ import asyncio
 import os
 import logging
 import shelve
-import datetime
 import time
 import json
 import traceback
+import hashlib
+import string
 from collections import defaultdict
 import openai
 from telethon import TelegramClient, events, errors, functions, types
 
 ADMIN_ID = 71863318
 
-MODELS = [
-    {'prefix': '$$', 'model': 'gpt-3.5-turbo-1106', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': '3$', 'model': 'gpt-3.5-turbo', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': '$', 'model': 'gpt-4-1106-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"'},
-    {'prefix': '4$', 'model': 'gpt-4', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-]
-DEFAULT_MODEL = 'gpt-4' # For compatibility with the old database format
-
-def get_prompt(model):
-    for m in MODELS:
-        if m['model'] == model:
-            return m['prompt_template'].replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
-    raise ValueError('Model not found')
+MODEL = 'gpt-4-1106-preview'
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -115,40 +104,33 @@ def get_whitelist():
     return db['whitelist']
 
 def only_admin(func):
-    async def new_func(message):
+    async def new_func(message, *args):
         if message.sender_id != ADMIN_ID:
             await send_message(message.chat_id, 'Only admin can use this command', message.id)
             return
-        await func(message)
+        await func(message, *args)
     return new_func
 
 def only_private(func):
-    async def new_func(message):
+    async def new_func(message, *args):
         if message.chat_id != message.sender_id:
             await send_message(message.chat_id, 'This command only works in private chat', message.id)
             return
-        await func(message)
+        await func(message, *args)
     return new_func
 
 def only_whitelist(func):
-    async def new_func(message):
+    async def new_func(message, *args):
         if not is_whitelist(message.chat_id):
             if message.chat_id == message.sender_id:
                 await send_message(message.chat_id, 'This chat is not in whitelist', message.id)
             return
-        await func(message)
+        await func(message, *args)
     return new_func
 
-async def completion(chat_history, model, chat_id, msg_id): # chat_history = [user, ai, user, ai, ..., user]
-    assert len(chat_history) % 2 == 1
-    messages=[{"role": "system", "content": get_prompt(model)}]
-    roles = ["user", "assistant"]
-    role_id = 0
-    for msg in chat_history:
-        messages.append({"role": roles[role_id], "content": msg})
-        role_id = 1 - role_id
+async def completion(messages, chat_id, msg_id):
     logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, messages)
-    stream = await openai.ChatCompletion.acreate(model=model, messages=messages, stream=True, request_timeout=15)
+    stream = await openai.ChatCompletion.acreate(model=MODEL, messages=messages, stream=True, request_timeout=15)
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, json.dumps(response, ensure_ascii=False))
         obj = response['choices'][0]
@@ -164,29 +146,27 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
             yield obj['delta']['content']
 
 def construct_chat_history(chat_id, msg_id):
+    trigger, gpt_id = None, None
     messages = []
-    should_be_bot = False
-    model = DEFAULT_MODEL
     while True:
         key = repr((chat_id, msg_id))
         if key not in db:
             logging.error('History message not found (chat_id=%r, msg_id=%r)', chat_id, msg_id)
             return None, None
-        is_bot, text, reply_id, *params = db[key]
-        if params:
-            model = params[0]
-        if is_bot != should_be_bot:
-            logging.error('Role does not match (chat_id=%r, msg_id=%r)', chat_id, msg_id)
-            return None, None
-        messages.append(text)
-        should_be_bot = not should_be_bot
+        msgs, reply_id = db[key]
+        new_messages = []
+        for i in msgs:
+            if 'gpt' in i:
+                trigger, gpt_id = i['gpt']
+            else:
+                new_messages.append(i)
+        messages = new_messages + messages
         if reply_id is None:
             break
         msg_id = reply_id
-    if len(messages) % 2 != 1:
-        logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
+    if trigger is None or gpt_id is None:
         return None, None
-    return messages[::-1], model
+    return messages, (trigger, gpt_id)
 
 @only_admin
 async def add_whitelist_handler(message):
@@ -209,12 +189,118 @@ async def del_whitelist_handler(message):
 async def get_whitelist_handler(message):
     await send_message(message.chat_id, str(get_whitelist()), message.id)
 
+create_gpt_help_text = '创建新的 GPT\n使用方法：/create [system prompt]\n例如：\n/create 你是一个中英翻译机器人，请把用户输入的内容从中文翻译成英文，或者从英文翻译成中文。请不要输出任何额外信息。'
+
 @only_whitelist
-async def list_models_handler(message):
-    text = ''
-    for m in MODELS:
-        text += f'Prefix: "{m["prefix"]}", model: {m["model"]}\n'
-    await send_message(message.chat_id, text, message.id)
+async def create_gpt(message, text):
+    text = text.strip()
+    if not text:
+        await send_message(message.chat_id, create_gpt_help_text, message.id)
+        return
+    gpt_id = hashlib.sha256(text.encode()).hexdigest()[:32]
+    db[repr(('gpts', gpt_id))] = text
+    await send_message(message.chat_id, f'创建成功！\n你可以使用 /set 命令来把此 GPT 绑定为本群的 Trigger\n你的 GPT ID: {gpt_id}\n例如：\n/set {gpt_id} nihao\n之后可以用 nihao$ 这个前缀来使用\n你也可以用 {gpt_id}$ 前缀来直接使用\n请注意：此 GPT ID 在不同群中都可以使用，但每个群要单独绑定 Trigger\n\n你的 system prompt：\n{text}', message.id)
+
+set_trigger_help_text = '把 GPT 绑定为本群的 Trigger\n使用方法：/set [GPT ID] [Trigger] [描述]\n其中描述会被 /list 功能展示，可以为空\n例如：\n/set e3b0c44298fc1c149afbf4c8996fb924 nihao 这是一个翻译机器人\n然后可以用 nihao$ 这个前缀来使用对应的 GPT\n注意：Trigger 仅限大小写字母和数字，长度为 2 到 20'
+
+@only_whitelist
+async def set_trigger(message, text):
+    splits = text.strip().split()
+    if len(splits) in [2, 3]:
+        if len(splits) == 2:
+            splits.append('')
+        gpt_id, trigger, description = splits
+        if len(description) > 50 or '\n' in description:
+            await send_message(message.chat_id, f'GPT 的描述不能超过 50 个字符，并且不能包含换行符', message.id)
+            return
+        if trigger.endswith('$'):
+            trigger = trigger[:-1]
+        if repr(('gpts', gpt_id)) not in db:
+            await send_message(message.chat_id, f'GPT ID "{gpt_id}" 不存在', message.id)
+            return
+        charset = string.ascii_letters + string.digits
+        if not all(c in charset for c in trigger) or len(trigger) not in range(2, 21):
+            await send_message(message.chat_id, f'Trigger 仅限大小写字母和数字，长度为 2 到 20', message.id)
+            return
+        if repr(('gpts_triggers', message.chat_id)) in db:
+            group_triggers = db[repr(('gpts_triggers', message.chat_id))]
+        else:
+            group_triggers = []
+        for i, (author, _, trigger_, _) in enumerate(group_triggers):
+            if trigger_ == trigger: # 已存在
+                if author != message.sender_id and message.sender_id != ADMIN_ID:
+                    await send_message(message.chat_id, f'这个 Trigger 被别人（uid={author}）占用了，你可以让 TA 删除或者找管理员删除', message.id)
+                    return
+                group_triggers[i] = (message.sender_id, gpt_id, trigger, description)
+                break
+        else:
+            group_triggers.append((message.sender_id, gpt_id, trigger, description))
+        db[repr(('gpts_triggers', message.chat_id))] = group_triggers
+        await send_message(message.chat_id, f'Trigger 已设置！\n从现在起，在本群中你可以使用 {trigger}$ 开头的消息来使用这个 GPT\nTrigger: {trigger}\nGPT ID：{gpt_id}\n描述：{description}', message.id)
+        return
+    await send_message(message.chat_id, set_trigger_help_text, message.id)
+
+del_trigger_help_text = '删除本群的 Trigger\n使用方法：/unset [Trigger]\n例如：\n/unset nihao'
+
+@only_whitelist
+async def del_trigger(message, text):
+    trigger = text.strip()
+    if trigger.endswith('$'):
+        trigger = trigger[:-1]
+    if trigger:
+        if repr(('gpts_triggers', message.chat_id)) in db:
+            group_triggers = db[repr(('gpts_triggers', message.chat_id))]
+        else:
+            group_triggers = []
+        for i, (author, _, trigger_, _) in enumerate(group_triggers):
+            if trigger_ == trigger:
+                if author != message.sender_id and message.sender_id != ADMIN_ID:
+                    await send_message(message.chat_id, f'你无权删除这个 Trigger，你可以让拥有者（uid={author}）删除或者找管理员删除', message.id)
+                    return
+                del group_triggers[i]
+                db[repr(('gpts_triggers', message.chat_id))] = group_triggers
+                await send_message(message.chat_id, f'Trigger {trigger} 已删除！', message.id)
+                return
+        else:
+            await send_message(message.chat_id, f'本群根本不存在 "{trigger}" 这个 Trigger！', message.id)
+            return
+    await send_message(message.chat_id, del_trigger_help_text, message.id)
+
+list_trigger_help_text = '列出本群的所有 Trigger\n使用方法：/list'
+
+@only_whitelist
+async def list_trigger(message):
+    if repr(('gpts_triggers', message.chat_id)) not in db:
+        group_triggers = []
+    else:
+        group_triggers = db[repr(('gpts_triggers', message.chat_id))]
+    if not group_triggers:
+        await send_message(message.chat_id, f'本群还没有 Trigger，请使用 /create 命令创建 GPT 后使用 /set 命令绑定 Trigger', message.id)
+        return
+    text = '本群的 Trigger 列表：\n\n'
+    for _, _, trigger, description in group_triggers:
+        text += f'[{trigger}] {description}\n'
+    async with BotReplyMessages(message.chat_id, message.id, '') as b:
+        await b.update(text)
+        await b.finalize()
+
+list_trigger_full_help_text = '列出本群的所有 Trigger，包含 GPT ID 和添加人\n使用方法：/list_full'
+
+@only_whitelist
+async def list_trigger_full(message):
+    if repr(('gpts_triggers', message.chat_id)) not in db:
+        group_triggers = []
+    else:
+        group_triggers = db[repr(('gpts_triggers', message.chat_id))]
+    if not group_triggers:
+        await send_message(message.chat_id, f'本群还没有 Trigger，请使用 /create 命令创建 GPT 后使用 /set 命令绑定 Trigger', message.id)
+        return
+    text = '本群的 Trigger 列表：\n\n'
+    for author, gpt_id, trigger, description in group_triggers:
+        text += f'Trigger: {trigger}\nGPT ID: {gpt_id}\n添加人：uid={author}\n描述：{description}\n\n'
+    async with BotReplyMessages(message.chat_id, message.id, '') as b:
+        await b.update(text)
+        await b.finalize()
 
 @retry()
 @ensure_interval()
@@ -320,37 +406,58 @@ async def reply_handler(message):
     text = message.message
     logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r', chat_id, sender_id, msg_id, text)
     reply_to_id = None
-    model = DEFAULT_MODEL
+    msgs = []
     if message.is_reply:
         reply_to_message = await message.get_reply_message()
         if reply_to_message.sender_id == bot_id: # user reply to bot message
             reply_to_id = message.reply_to.reply_to_msg_id
             await pending_reply_manager.wait_for((chat_id, reply_to_id))
-        else:
+            msgs.append({"role": "user", "content": text})
+        else: # user reply to user message
             return
     else: # new message
-        for m in MODELS:
-            if text.startswith(m['prefix']):
-                text = text[len(m['prefix']):]
-                model = m['model']
-                break
-        else: # not reply or new message to bot
-            if chat_id == sender_id: # if in private chat, send hint
-                await send_message(chat_id, 'Please start a new conversation with $ or reply to a bot message', msg_id)
+        splits = text.split('$', 1)
+        if len(splits) != 2:
             return
-    db[repr((chat_id, msg_id))] = (False, text, reply_to_id, model)
+        trigger, text = splits
+        gpt_id = None
+        if repr(('gpts', trigger)) in db:
+            gpt_id = trigger
+        else:
+            for _, gpt_id_, trigger_, _ in db[repr(('gpts_triggers', chat_id))]:
+                if trigger_ == trigger:
+                    gpt_id = gpt_id_
+        if gpt_id is None:
+            return
+        system_prompt = db[repr(('gpts', gpt_id))]
+        msgs.append({"gpt": (trigger, gpt_id)})
+        msgs.append({"role": "system", "content": system_prompt})
+        msgs.append({"role": "user", "content": text})
 
-    chat_history, model = construct_chat_history(chat_id, msg_id)
+    db[repr((chat_id, msg_id))] = (msgs, reply_to_id)
+
+    chat_history, t = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
         await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id)
         return
 
+    trigger, gpt_id = t
+    if trigger == gpt_id:
+        prefix = f'[{gpt_id}] '
+    else:
+        for _, gpt_id_, trigger_, _ in db[repr(('gpts_triggers', chat_id))]:
+            if trigger_ == trigger and gpt_id_ == gpt_id: # not changed
+                prefix = f'[{trigger}] '
+                break
+        else: # trigger no longer exists
+            prefix = f'[{gpt_id}] (was {trigger})\n'
+
     error_cnt = 0
     while True:
         reply = ''
-        async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
+        async with BotReplyMessages(chat_id, msg_id, prefix) as replymsgs:
             try:
-                stream = completion(chat_history, model, chat_id, msg_id)
+                stream = completion(chat_history, chat_id, msg_id)
                 first_update_timestamp = None
                 async for delta in stream:
                     reply += delta
@@ -361,7 +468,7 @@ async def reply_handler(message):
                 await replymsgs.update(reply)
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
-                    db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
+                    db[repr((chat_id, message_id))] = [{"role": "assistant", "content": reply}], msg_id
                 return
             except Exception as e:
                 error_cnt += 1
@@ -381,6 +488,10 @@ async def reply_handler(message):
 async def ping(message):
     await send_message(message.chat_id, f'chat_id={message.chat_id} user_id={message.sender_id} is_whitelisted={is_whitelist(message.chat_id)}', message.id)
 
+async def help(message):
+    help_message = '\n\n'.join([create_gpt_help_text, set_trigger_help_text, del_trigger_help_text, list_trigger_help_text, list_trigger_full_help_text])
+    await send_message(message.chat_id, help_message, message.id)
+
 async def main():
     global bot_id, pending_reply_manager, db, bot
 
@@ -398,9 +509,11 @@ async def main():
     rootLogger.addHandler(consoleHandler)
 
     with shelve.open('db') as db:
-        # db[(chat_id, msg_id)] = (is_bot, text, reply_id, model)
-        # compatible old db format: db[(chat_id, msg_id)] = (is_bot, text, reply_id)
+        # db[(chat_id, msg_id)] = (msgs, reply_id)
+        # msgs = [{"role": "system/user/assistant", "content": "foo"}]
         # db['whitelist'] = set(whitelist_chat_ids)
+        # db[('gpts', gpt_id)] = system_prompt
+        # db[('gpts_triggers', chat_id)] = [(author, gpt_id, trigger, description)]
         if 'whitelist' not in db:
             db['whitelist'] = {ADMIN_ID}
         bot_id = int(TELEGRAM_BOT_TOKEN.split(':')[0])
@@ -419,14 +532,30 @@ async def main():
                 text = event.message.message
                 if text == '/ping' or text == f'/ping@{me.username}':
                     await ping(event.message)
-                elif text == '/list_models' or text == f'/list_models@{me.username}':
-                    await list_models_handler(event.message)
                 elif text == '/add_whitelist' or text == f'/add_whitelist@{me.username}':
                     await add_whitelist_handler(event.message)
                 elif text == '/del_whitelist' or text == f'/del_whitelist@{me.username}':
                     await del_whitelist_handler(event.message)
                 elif text == '/get_whitelist' or text == f'/get_whitelist@{me.username}':
                     await get_whitelist_handler(event.message)
+                elif text.startswith(f'/create@{me.username}'):
+                    await create_gpt(event.message, text[len(f'/create@{me.username}'):])
+                elif text.startswith('/create'):
+                    await create_gpt(event.message, text[len('/create'):])
+                elif text.startswith(f'/set@{me.username}'):
+                    await set_trigger(event.message, text[len(f'/set@{me.username}'):])
+                elif text.startswith('/set'):
+                    await set_trigger(event.message, text[len('/set'):])
+                elif text.startswith(f'/unset@{me.username}'):
+                    await del_trigger(event.message, text[len(f'/unset@{me.username}'):])
+                elif text.startswith('/unset'):
+                    await del_trigger(event.message, text[len('/unset'):])
+                elif text == '/list' or text == f'/list@{me.username}':
+                    await list_trigger(event.message)
+                elif text == '/list_full' or text == f'/list_full@{me.username}':
+                    await list_trigger_full(event.message)
+                elif text == '/help' or text == f'/help@{me.username}':
+                    await help(event.message)
                 else:
                     await reply_handler(event.message)
             assert await bot(functions.bots.SetBotCommandsRequest(
@@ -434,10 +563,15 @@ async def main():
                 lang_code='en',
                 commands=[types.BotCommand(command, description) for command, description in [
                     ('ping', 'Test bot connectivity'),
-                    ('list_models', 'List supported models'),
                     ('add_whitelist', 'Add this group to whitelist (only admin)'),
                     ('del_whitelist', 'Delete this group from whitelist (only admin)'),
                     ('get_whitelist', 'List groups in whitelist (only admin)'),
+                    ('create', 'Create a new GPT'),
+                    ('set', 'Bind a GPT ID to a Trigger for this group'),
+                    ('unset', 'Delete a Trigger for this group'),
+                    ('list', 'List Triggers in this group'),
+                    ('list_full', 'List Triggers in this group (full)'),
+                    ('help', 'Show help message'),
                 ]]
             ))
             await bot.run_until_disconnected()
