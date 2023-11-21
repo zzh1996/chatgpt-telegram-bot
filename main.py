@@ -424,7 +424,11 @@ async def reply_handler(message):
         if repr(('gpts', trigger)) in db:
             gpt_id = trigger
         else:
-            for _, gpt_id_, trigger_, _ in db[repr(('gpts_triggers', chat_id))]:
+            if repr(('gpts_triggers', chat_id)) in db:
+                group_triggers = db[repr(('gpts_triggers', chat_id))]
+            else:
+                group_triggers = []
+            for _, gpt_id_, trigger_, _ in group_triggers:
                 if trigger_ == trigger:
                     gpt_id = gpt_id_
         if gpt_id is None:
@@ -445,7 +449,11 @@ async def reply_handler(message):
     if trigger == gpt_id:
         prefix = f'[{gpt_id}] '
     else:
-        for _, gpt_id_, trigger_, _ in db[repr(('gpts_triggers', chat_id))]:
+        if repr(('gpts_triggers', chat_id)) in db:
+            group_triggers = db[repr(('gpts_triggers', chat_id))]
+        else:
+            group_triggers = []
+        for _, gpt_id_, trigger_, _ in group_triggers:
             if trigger_ == trigger and gpt_id_ == gpt_id: # not changed
                 prefix = f'[{trigger}] '
                 break
