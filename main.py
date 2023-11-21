@@ -204,7 +204,7 @@ set_trigger_help_text = '把 GPT 绑定为本群的 Trigger\n使用方法：/set
 
 @only_whitelist
 async def set_trigger(message, text):
-    splits = text.strip().split()
+    splits = text.strip().split(maxsplit=2)
     if len(splits) in [2, 3]:
         if len(splits) == 2:
             splits.append('')
