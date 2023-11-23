@@ -199,8 +199,10 @@ async def completion(messages, model, chat_id, msg_id, functions, tool_choice=No
         params['tool_choice'] = tool_choice
     stream = await aclient.chat.completions.create(**params)
     tool_calls = []
+    finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
+        assert not finished
         obj = response.choices[0]
         assert obj.delta.function_call is None # function_call is deprecated
         if obj.finish_reason is not None:
@@ -211,7 +213,7 @@ async def completion(messages, model, chat_id, msg_id, functions, tool_choice=No
                 yield tool_calls
             else:
                 assert obj.finish_reason == 'stop'
-            return
+            finished = True
         if obj.delta.role is not None:
             if obj.delta.role != 'assistant':
                 raise ValueError("Role error")
