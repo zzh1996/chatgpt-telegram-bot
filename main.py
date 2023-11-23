@@ -29,7 +29,11 @@ def PROMPT(model):
     s = "You are ChatGPT Telegram bot with the abilities to search on Google and Bing, read web pages, get YouTube transcripts, Use a calculator and use WolframAlpha. You must use these abilities to answer user's questions. You shouldn't answer or calculate by yourself without these tools. Always search by keywords and don't repeat user's question in search query. Search for \"Bill Gates\" instead of \"Who is Bill Gates\" when user asks \"Who is Bill Gates?\". You should read web pages after searching if they contain information you need. Summarize results instead of verbatim repetition. Always respond in the same language as the user's questions, even though the search and web pages may be in other languages. If the user asks in Chinese, please answer in Chinese, and if the user asks in English, please answer in English. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"
     return s.replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
 
-aclient = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+aclient = openai.AsyncOpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    max_retries=0,
+    timeout=15,
+)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 TELEGRAM_LENGTH_LIMIT = 4096
