@@ -4,3 +4,8 @@ db
 __pycache__
 *.pyc
 .DS_Store
+*.session
+.ipynb_checkpoints/
+temp/
+chatlogs/
+docker-compose-prod.yml

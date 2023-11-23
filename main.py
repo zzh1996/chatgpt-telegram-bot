@@ -149,14 +149,16 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
         role_id = 1 - role_id
     logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, messages)
     stream = await openai.ChatCompletion.acreate(model=model, messages=messages, stream=True, request_timeout=15)
+    finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, json.dumps(response, ensure_ascii=False))
+        assert not finished
         obj = response['choices'][0]
         if obj['finish_reason'] is not None:
             assert not obj['delta']
             if obj['finish_reason'] == 'length':
                 yield ' [!Output truncated due to limit]'
-            return
+            finished = True
         if 'role' in obj['delta']:
             if obj['delta']['role'] != 'assistant':
                 raise ValueError("Role error")
