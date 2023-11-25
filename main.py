@@ -158,6 +158,10 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
             assert not obj['delta']
             if obj['finish_reason'] == 'length':
                 yield ' [!Output truncated due to limit]'
+            elif obj['finish_reason'] == 'stop':
+                pass
+            else:
+                yield f'\n\n[!] Error: finish_reason="{obj["finish_reason"]}"'
             finished = True
         if 'role' in obj['delta']:
             if obj['delta']['role'] != 'assistant':
