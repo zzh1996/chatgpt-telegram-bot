@@ -14,7 +14,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import RetryAfter, NetworkError, BadRequest
 
-aclient = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=15.0)
+aclient = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"), max_retries=0, timeout=15.0)
 
 ADMIN_ID = 71863318
 
@@ -161,19 +161,21 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
         role_id = 1 - role_id
     logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, messages)
     stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
+    finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
+        assert not finished
         obj = response.choices[0]
         if obj.finish_reason is not None:
-            assert not any([
+            assert all([item is None for item in [
                 obj.delta.content,
                 obj.delta.function_call,
                 obj.delta.role,
                 obj.delta.tool_calls,
-            ])
+            ]])
             if obj.finish_reason == 'length':
                 yield ' [!Output truncated due to limit]'
-            return
+        finished = True
         if obj.delta.role is not None and obj.delta.role != 'assistant':
             raise ValueError("Role error")
         if obj.delta.content:
