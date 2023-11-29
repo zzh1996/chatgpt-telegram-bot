@@ -4,8 +4,10 @@ import logging
 import shelve
 import datetime
 import time
-import json
 import traceback
+import hashlib
+import base64
+import copy
 from collections import defaultdict
 import openai
 from telethon import TelegramClient, events, errors, functions, types
@@ -19,8 +21,11 @@ MODELS = [
     {'prefix': '4$', 'model': 'gpt-4', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
 ]
 DEFAULT_MODEL = 'gpt-4' # For compatibility with the old database format
+VISION_MODEL = 'gpt-4-vision-preview'
 
 def get_prompt(model):
+    if model == VISION_MODEL:
+        model = 'gpt-4-1106-preview'
     for m in MODELS:
         if m['model'] == model:
             return m['prompt_template'].replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
@@ -143,6 +148,22 @@ def only_whitelist(func):
         await func(message)
     return new_func
 
+def save_photo(photo_blob): # TODO: change to async
+    h = hashlib.sha256(photo_blob).hexdigest()
+    dir = f'photos/{h[:2]}/{h[2:4]}'
+    path = f'{dir}/{h}'
+    if not os.path.isfile(path):
+        os.makedirs(dir, exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(photo_blob)
+    return h
+
+def load_photo(h):
+    dir = f'photos/{h[:2]}/{h[2:4]}'
+    path = f'{dir}/{h}'
+    with open(path, 'rb') as f:
+        return f.read()
+
 async def completion(chat_history, model, chat_id, msg_id): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
     messages=[{"role": "system", "content": get_prompt(model)}]
@@ -151,26 +172,45 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
     for msg in chat_history:
         messages.append({"role": roles[role_id], "content": msg})
         role_id = 1 - role_id
-    logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, messages)
-    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
+    def remove_image(messages):
+        new_messages = copy.deepcopy(messages)
+        for message in new_messages:
+            if 'content' in message:
+                if isinstance(message['content'], list):
+                    for obj in message['content']:
+                        if obj['type'] == 'image_url':
+                            obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
+        return new_messages
+    logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, remove_image(messages))
+    if model == VISION_MODEL:
+        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, max_tokens=4096)
+    else:
+        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
         assert not finished
         obj = response.choices[0]
-        if obj.finish_reason is not None:
+        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
             assert all(item is None for item in [
                 obj.delta.content,
                 obj.delta.function_call,
                 obj.delta.role,
                 obj.delta.tool_calls,
             ])
-            if obj.finish_reason == 'length':
+            finish_reason = obj.finish_reason
+            if 'finish_details' in obj.model_extra and obj.finish_details is not None:
+                assert finish_reason is None
+                finish_reason = obj.finish_details['type']
+            if finish_reason == 'length':
                 yield ' [!Output truncated due to limit]'
-            elif obj.finish_reason == 'stop':
+            elif finish_reason == 'stop':
                 pass
-            else:
-                yield f'\n\n[!] Error: finish_reason="{obj["finish_reason"]}"'
+            elif finish_reason is not None:
+                if obj.finish_reason is not None:
+                    yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
+                else:
+                    yield f'\n\n[!] Error: finish_details="{obj.finish_details}"'
             finished = True
         if obj.delta.role is not None:
             if obj.delta.role != 'assistant':
@@ -182,18 +222,33 @@ def construct_chat_history(chat_id, msg_id):
     messages = []
     should_be_bot = False
     model = DEFAULT_MODEL
+    has_image = False
     while True:
         key = repr((chat_id, msg_id))
         if key not in db:
             logging.error('History message not found (chat_id=%r, msg_id=%r)', chat_id, msg_id)
             return None, None
-        is_bot, text, reply_id, *params = db[key]
+        is_bot, message, reply_id, *params = db[key]
         if params:
             model = params[0]
         if is_bot != should_be_bot:
             logging.error('Role does not match (chat_id=%r, msg_id=%r)', chat_id, msg_id)
             return None, None
-        messages.append(text)
+        if isinstance(message, list):
+            new_message = []
+            for obj in message:
+                if obj['type'] == 'text':
+                    new_message.append(obj)
+                elif obj['type'] == 'image':
+                    blob = load_photo(obj['hash'])
+                    blob_base64 = base64.b64encode(blob).decode()
+                    image_url = 'data:image/jpeg;base64,' + blob_base64
+                    new_message.append({'type': 'image_url', 'image_url': {'url': image_url, 'detail': 'high'}})
+                    has_image = True
+                else:
+                    raise ValueError('Unknown message type in chat history')
+            message = new_message
+        messages.append(message)
         should_be_bot = not should_be_bot
         if reply_id is None:
             break
@@ -201,6 +256,8 @@ def construct_chat_history(chat_id, msg_id):
     if len(messages) % 2 != 1:
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
         return None, None
+    if has_image:
+        model = VISION_MODEL
     return messages[::-1], model
 
 @only_admin
@@ -333,17 +390,22 @@ async def reply_handler(message):
     sender_id = message.sender_id
     msg_id = message.id
     text = message.message
-    logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r', chat_id, sender_id, msg_id, text)
+    logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r, photo=%s', chat_id, sender_id, msg_id, text, message.photo)
     reply_to_id = None
     model = DEFAULT_MODEL
+    extra_photo_message = None
+    if not text and message.photo is None: # unknown media types
+        return
     if message.is_reply:
         reply_to_message = await message.get_reply_message()
         if reply_to_message.sender_id == bot_id: # user reply to bot message
             reply_to_id = message.reply_to.reply_to_msg_id
             await pending_reply_manager.wait_for((chat_id, reply_to_id))
+        elif reply_to_message.photo is not None: # user reply to a photo
+            extra_photo_message = reply_to_message
         else:
             return
-    else: # new message
+    if not message.is_reply or extra_photo_message is not None: # new message
         for m in MODELS:
             if text.startswith(m['prefix']):
                 text = text[len(m['prefix']):]
@@ -353,7 +415,21 @@ async def reply_handler(message):
             if chat_id == sender_id: # if in private chat, send hint
                 await send_message(chat_id, 'Please start a new conversation with $ or reply to a bot message', msg_id)
             return
-    db[repr((chat_id, msg_id))] = (False, text, reply_to_id, model)
+
+    photo_message = message if message.photo is not None else extra_photo_message
+    photo_hash = None
+    if photo_message is not None:
+        if photo_message.grouped_id is not None:
+            await send_message(chat_id, 'Grouped photos are not yet supported, but will be supported soon', msg_id)
+            return
+        photo_blob = await photo_message.download_media(bytes)
+        photo_hash = save_photo(photo_blob)
+
+    if photo_hash:
+        new_message = [{'type': 'text', 'text': text}, {'type': 'image', 'hash': photo_hash}]
+    else:
+        new_message = text
+    db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, model)
 
     chat_history, model = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
