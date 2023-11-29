@@ -1,2 +1,2 @@
 FROM python:3.11
-RUN pip install telethon cryptg git+https://github.com/zzh1996/openai-python.git@fix
+RUN pip install Telethon==1.32.1 cryptg==0.4.0 openai==1.3.3
