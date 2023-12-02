@@ -4,6 +4,7 @@ import json
 from bs4 import BeautifulSoup
 import os
 import sys
+import tiktoken
 
 class Browsing:
     functions = [{
@@ -67,6 +68,20 @@ class Browsing:
             if newline:
                 newlines.append(newline)
         text = '\n'.join(newlines)
+
+        if len(tiktoken.encoding_for_model('gpt-4').encode(text)) >= 16384:
+            soup = BeautifulSoup(html, "lxml")
+            for script in soup(["script", "style", "noscript"]):
+                script.decompose()
+
+            text = soup.get_text()
+            newlines = []
+            for line in text.splitlines():
+                newline = ' '.join(i for i in line.split())
+                if newline:
+                    newlines.append(newline)
+            text = '\n'.join(newlines)
+
         return {"title": data['title'], "content": text}
 
 async def main():
