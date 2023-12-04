@@ -21,7 +21,7 @@ class Youtube:
     }]
 
     sub_preferences_en = ['en', 'en-US', 'en-GB', 'en-AU', 'en-CA', 'en-IN', 'en-IE']
-    sub_preferences_zh = ['zh', 'zh-CN', 'zh-Hans', 'zh-Hant', 'zh-TW', 'zh-HK', 'zh-SG']
+    sub_preferences_zh = ['zh-CN', 'zh-Hans', 'zh', 'zh-Hant', 'zh-TW', 'zh-HK', 'zh-SG']
     autosub_preferences = ['en']
 
     def _get_youtube_transcript(self, url):
