@@ -20,6 +20,10 @@ class Youtube:
         }
     }]
 
+    sub_preferences_en = ['en', 'en-US', 'en-GB', 'en-AU', 'en-CA', 'en-IN', 'en-IE']
+    sub_preferences_zh = ['zh', 'zh-CN', 'zh-Hans', 'zh-Hant', 'zh-TW', 'zh-HK', 'zh-SG']
+    autosub_preferences = ['en']
+
     def _get_youtube_transcript(self, url):
         if not yt_dlp.extractor.youtube.YoutubeIE.suitable(url):
             return {'error': 'URL is not a YouTube Video'}
@@ -36,8 +40,13 @@ class Youtube:
             if 'description' in info:
                 output['description'] = info['description']
 
+            if 'title' in info and len([c for c in info['title'] if ord(c) in range(0x3400, 0xA000)]) >= 5:
+                sub_preferences = self.sub_preferences_zh + self.sub_preferences_en
+            else:
+                sub_preferences = self.sub_preferences_en + self.sub_preferences_zh
+
             subtitle = None
-            for lang in ['en', 'zh-Hans', 'zh-Hant']:
+            for lang in sub_preferences:
                 if lang in info['subtitles']:
                     subtitle = 'sub', lang
                     break
@@ -47,8 +56,10 @@ class Youtube:
                         subtitle = 'sub', lang
                         break
             if subtitle is None:
-                if 'en' in info['automatic_captions']:
-                    subtitle = 'autosub', 'en'
+                for lang in self.autosub_preferences:
+                    if lang in info['automatic_captions']:
+                        subtitle = 'autosub', lang
+                        break
 
             if subtitle is None:
                 raise ValueError('No subtitle found')
