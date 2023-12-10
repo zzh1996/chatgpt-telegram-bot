@@ -9,6 +9,7 @@ import hashlib
 import base64
 import copy
 from collections import defaultdict
+from richtext import RichText
 import openai
 from telethon import TelegramClient, events, errors, functions, types
 
@@ -203,7 +204,7 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
                 assert finish_reason is None
                 finish_reason = obj.finish_details['type']
             if finish_reason == 'length':
-                yield ' [!Output truncated due to limit]'
+                yield '\n\n[!] Error: Output truncated due to limit'
             elif finish_reason == 'stop':
                 pass
             elif finish_reason is not None:
@@ -292,11 +293,14 @@ async def list_models_handler(message):
 @ensure_interval()
 async def send_message(chat_id, text, reply_to_message_id):
     logging.info('Sending message: chat_id=%r, reply_to_message_id=%r, text=%r', chat_id, reply_to_message_id, text)
+    text = RichText(text)
+    text, entities = text.to_telegram()
     msg = await bot.send_message(
         chat_id,
         text,
         reply_to=reply_to_message_id,
         link_preview=False,
+        formatting_entities=entities,
     )
     logging.info('Message sent: chat_id=%r, reply_to_message_id=%r, message_id=%r', chat_id, reply_to_message_id, msg.id)
     return msg.id
@@ -305,12 +309,15 @@ async def send_message(chat_id, text, reply_to_message_id):
 @ensure_interval()
 async def edit_message(chat_id, text, message_id):
     logging.info('Editing message: chat_id=%r, message_id=%r, text=%r', chat_id, message_id, text)
+    text = RichText(text)
+    text, entities = text.to_telegram()
     try:
         await bot.edit_message(
             chat_id,
             message_id,
             text,
             link_preview=False,
+            formatting_entities=entities,
         )
     except errors.MessageNotModifiedError as e:
         logging.info('Message not modified: chat_id=%r, message_id=%r', chat_id, message_id)
@@ -448,8 +455,8 @@ async def reply_handler(message):
                     if first_update_timestamp is None:
                         first_update_timestamp = time.time()
                     if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
-                        await replymsgs.update(reply + ' [!Generating...]')
-                await replymsgs.update(reply)
+                        await replymsgs.update(RichText.from_markdown(reply) + ' [!Generating...]')
+                await replymsgs.update(RichText.from_markdown(reply))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
                     db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
