@@ -4,6 +4,7 @@ import json
 from bs4 import BeautifulSoup
 import os
 import sys
+import re
 import tiktoken
 
 class Browsing:
@@ -48,6 +49,11 @@ class Browsing:
         for script in soup(["script", "style", "noscript"]):
             script.decompose()
 
+        for a in soup.find_all(style=re.compile(r'display:\s*none')):
+            a.decompose()
+
+        text_without_href = soup.get_text()
+
         for a in soup.find_all("a", href=True):
             text = a.get_text().strip()
             if not text:
@@ -62,27 +68,18 @@ class Browsing:
         #         img.string = f"![{img.get('alt', 'img')}]({src})"
 
         text = soup.get_text()
-        newlines = []
-        for line in text.splitlines():
-            newline = ' '.join(i for i in line.split())
-            if newline:
-                newlines.append(newline)
-        text = '\n'.join(newlines)
+
+        text = compact_whitespaces(text)
 
         if len(tiktoken.encoding_for_model('gpt-4').encode(text)) >= 16384:
-            soup = BeautifulSoup(html, "lxml")
-            for script in soup(["script", "style", "noscript"]):
-                script.decompose()
-
-            text = soup.get_text()
-            newlines = []
-            for line in text.splitlines():
-                newline = ' '.join(i for i in line.split())
-                if newline:
-                    newlines.append(newline)
-            text = '\n'.join(newlines)
+            text = compact_whitespaces(text_without_href)
 
         return {"title": data['title'], "content": text}
+
+def compact_whitespaces(text):
+    text = re.sub(r' {82,}', ' ' * 81, text) # 1 to 81 spaces will be a single token
+    text = re.sub(r'\n{4,}', '\n' * 3, text)
+    return text
 
 async def main():
     b = Browsing()
