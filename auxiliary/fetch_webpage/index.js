@@ -26,8 +26,8 @@ async function scroll(page) {
         }
         window.scrollTo(0, pos);
       }, 100);
-      // 40s 后无条件结束，40s = AWS Lambda 限制 60s - 加载前后共等待 10s - 保险余量 10s
-      const timer2 = setTimeout(end, 40000);
+      // 20s 后无条件结束
+      const timer2 = setTimeout(end, 20000);
     });
   });
 }
@@ -35,9 +35,9 @@ async function scroll(page) {
 async function main(browser, url) {
   const page = await browser.newPage();
   await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
-  await page.goto(url);
+  await page.goto(url, {waitUntil: 'domcontentloaded'});
   try {
-    await new Promise(r => setTimeout(r, 5000));
+    await new Promise(r => setTimeout(r, 3000));
     // await Promise.race([
     //   new Promise(r => setTimeout(r, 5000)),
     //   page.waitForFunction(() => document.readyState === 'complete'),
@@ -45,7 +45,7 @@ async function main(browser, url) {
   } catch {}
   await scroll(page);
   try {
-    await new Promise(r => setTimeout(r, 5000));
+    await new Promise(r => setTimeout(r, 3000));
     // await Promise.race([
     //   new Promise(r => setTimeout(r, 5000)),
     //   page.waitForFunction(() => document.readyState === 'complete'),
