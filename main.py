@@ -68,7 +68,7 @@ class PluginManager:
 
     async def call(self, func_name, params):
         if func_name not in self.function_registry:
-            return json.dumps({'error': f'Function {func_name} not found'})
+            return {'error': f'Function {func_name} not found'}
         func = self.function_registry[func_name]
         try:
             if asyncio.iscoroutinefunction(func):
