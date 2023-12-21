@@ -13,7 +13,7 @@ class Search:
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "The search query",
+                    "description": "The search query, English only",
                 },
             },
             "required": ["query"],
