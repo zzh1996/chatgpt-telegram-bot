@@ -26,6 +26,8 @@ class Search:
 
     async def search(self, query):
         query = query.strip()
+        if not query:
+            return {'error': 'query is empty'}
         api_url = 'https://www.googleapis.com/customsearch/v1'
         params = {
             'key': self.key,
