@@ -25,6 +25,7 @@ class Search:
         self.cx = os.environ['GOOGLE_SEARCH_CX']
 
     async def search(self, query):
+        query = query.strip()
         api_url = 'https://www.googleapis.com/customsearch/v1'
         params = {
             'key': self.key,
