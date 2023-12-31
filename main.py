@@ -450,7 +450,7 @@ async def reply_handler(message):
             document_text = document_blob.decode()
             assert all(c != '\x00' for c in document_text)
         except:
-            await send_message(chat_id, 'File is not text file', msg_id)
+            await send_message(chat_id, 'File is not text file or not valid UTF-8', msg_id)
             return
 
     if photo_hash:
