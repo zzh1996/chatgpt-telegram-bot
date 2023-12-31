@@ -46,6 +46,7 @@ TELEGRAM_MIN_INTERVAL = 3
 OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
+TEXT_FILE_SIZE_LIMIT = 100_000
 
 telegram_last_timestamp = defaultdict(lambda: None)
 telegram_rate_limit_lock = defaultdict(asyncio.Lock)
@@ -397,11 +398,12 @@ async def reply_handler(message):
     sender_id = message.sender_id
     msg_id = message.id
     text = message.message
-    logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r, photo=%s', chat_id, sender_id, msg_id, text, message.photo)
+    logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r, photo=%s, document=%s', chat_id, sender_id, msg_id, text, message.photo, message.document)
     reply_to_id = None
     model = DEFAULT_MODEL
     extra_photo_message = None
-    if not text and message.photo is None: # unknown media types
+    extra_document_message = None
+    if not text and message.photo is None and message.document is None: # unknown media types
         return
     if message.is_reply:
         reply_to_message = await message.get_reply_message()
@@ -410,9 +412,11 @@ async def reply_handler(message):
             await pending_reply_manager.wait_for((chat_id, reply_to_id))
         elif reply_to_message.photo is not None: # user reply to a photo
             extra_photo_message = reply_to_message
+        elif reply_to_message.document is not None: # user reply to a document
+            extra_document_message = reply_to_message
         else:
             return
-    if not message.is_reply or extra_photo_message is not None: # new message
+    if not message.is_reply or extra_photo_message is not None or extra_document_message is not None: # new message
         for m in MODELS:
             if text.startswith(m['prefix']):
                 text = text[len(m['prefix']):]
@@ -432,10 +436,33 @@ async def reply_handler(message):
         photo_blob = await photo_message.download_media(bytes)
         photo_hash = save_photo(photo_blob)
 
+    document_message = message if message.document is not None else extra_document_message
+    document_text = None
+    if document_message is not None:
+        if document_message.grouped_id is not None:
+            await send_message(chat_id, 'Grouped files are not yet supported, but will be supported soon', msg_id)
+            return
+        if document_message.document.size > TEXT_FILE_SIZE_LIMIT:
+            await send_message(chat_id, 'File too large', msg_id)
+            return
+        document_blob = await document_message.download_media(bytes)
+        try:
+            document_text = document_blob.decode()
+            assert all(c != '\x00' for c in document_text)
+        except:
+            await send_message(chat_id, 'File is not text file', msg_id)
+            return
+
     if photo_hash:
         new_message = [{'type': 'text', 'text': text}, {'type': 'image', 'hash': photo_hash}]
+    elif document_text:
+        if text:
+            new_message = document_text + '\n\n' + text
+        else:
+            new_message = document_text
     else:
         new_message = text
+
     db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, model)
 
     chat_history, model = construct_chat_history(chat_id, msg_id)
