@@ -12,6 +12,12 @@ from collections import defaultdict
 from richtext import RichText
 import openai
 from telethon import TelegramClient, events, errors, functions, types
+import signal
+
+def debug_signal_handler(signal, frame):
+    breakpoint()
+
+signal.signal(signal.SIGUSR1, debug_signal_handler)
 
 ADMIN_ID = 71863318
 
