@@ -10,7 +10,7 @@ import base64
 import copy
 from collections import defaultdict
 from richtext import RichText
-import openai
+import google.generativeai as genai
 from telethon import TelegramClient, events, errors, functions, types
 import signal
 
@@ -22,34 +22,27 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': '$$', 'model': 'gpt-3.5-turbo-1106', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': '3$', 'model': 'gpt-3.5-turbo', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': '$', 'model': 'gpt-4-1106-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"'},
-    {'prefix': '4$', 'model': 'gpt-4', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
+    {'prefix': 'g$', 'model': 'gemini-pro', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'gpt-4' # For compatibility with the old database format
-VISION_MODEL = 'gpt-4-vision-preview'
+DEFAULT_MODEL = 'gemini-pro' # For compatibility with the old database format
+VISION_MODEL = 'gemini-pro-vision'
 
 def get_prompt(model):
     if model == VISION_MODEL:
-        model = 'gpt-4-1106-preview'
+        model = 'gemini-pro'
     for m in MODELS:
         if m['model'] == model:
             return m['prompt_template'].replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
     raise ValueError('Model not found')
 
-aclient = openai.AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    max_retries=0,
-    timeout=15,
-)
+genai.configure(api_key=os.getenv('GEMINI_API_KEY'), transport='grpc_asyncio')
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
 
 TELEGRAM_LENGTH_LIMIT = 4096
 TELEGRAM_MIN_INTERVAL = 3
-OPENAI_MAX_RETRY = 3
+OPENAI_MAX_RETRY = 0
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
 TEXT_FILE_SIZE_LIMIT = 100_000
@@ -174,57 +167,39 @@ def load_photo(h):
 
 async def completion(chat_history, model, chat_id, msg_id): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
-    messages=[{"role": "system", "content": get_prompt(model)}]
-    roles = ["user", "assistant"]
+    messages=[]
+    roles = ["user", "model"]
     role_id = 0
     for msg in chat_history:
-        messages.append({"role": roles[role_id], "content": msg})
+        messages.append({"role": roles[role_id], "parts": msg})
         role_id = 1 - role_id
     def remove_image(messages):
         new_messages = copy.deepcopy(messages)
         for message in new_messages:
-            if 'content' in message:
-                if isinstance(message['content'], list):
-                    for obj in message['content']:
-                        if obj['type'] == 'image_url':
-                            obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
+            if 'parts' in message:
+                if isinstance(message['parts'], list):
+                    for obj in message['parts']:
+                        if 'data' in obj:
+                            obj['data'] = '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, remove_image(messages))
-    if model == VISION_MODEL:
-        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, max_tokens=4096)
-    else:
-        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
-    finished = False
+    safety_settings = [{"category": category, "threshold": "BLOCK_NONE"} for category in [
+        "HARM_CATEGORY_SEXUAL",
+        "HARM_CATEGORY_DANGEROUS",
+        "HARM_CATEGORY_HARASSMENT",
+        "HARM_CATEGORY_HATE_SPEECH",
+        "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        "HARM_CATEGORY_DANGEROUS_CONTENT",
+    ]]
+    stream = await genai.GenerativeModel(model).generate_content_async(
+        messages,
+        stream=True,
+        safety_settings=safety_settings,
+    )
     async for response in stream:
-        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
-        assert not finished
-        obj = response.choices[0]
-        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
-            assert all(item is None for item in [
-                obj.delta.content,
-                obj.delta.function_call,
-                obj.delta.role,
-                obj.delta.tool_calls,
-            ])
-            finish_reason = obj.finish_reason
-            if 'finish_details' in obj.model_extra and obj.finish_details is not None:
-                assert finish_reason is None
-                finish_reason = obj.finish_details['type']
-            if finish_reason == 'length':
-                yield '\n\n[!] Error: Output truncated due to limit'
-            elif finish_reason == 'stop':
-                pass
-            elif finish_reason is not None:
-                if obj.finish_reason is not None:
-                    yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
-                else:
-                    yield f'\n\n[!] Error: finish_details="{obj.finish_details}"'
-            finished = True
-        if obj.delta.role is not None:
-            if obj.delta.role != 'assistant':
-                raise ValueError("Role error")
-        if obj.delta.content is not None:
-            yield obj.delta.content
+        response_text = response.text
+        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response_text)
+        yield response_text
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
@@ -242,20 +217,18 @@ def construct_chat_history(chat_id, msg_id):
         if is_bot != should_be_bot:
             logging.error('Role does not match (chat_id=%r, msg_id=%r)', chat_id, msg_id)
             return None, None
-        if isinstance(message, list):
-            new_message = []
-            for obj in message:
-                if obj['type'] == 'text':
-                    new_message.append(obj)
-                elif obj['type'] == 'image':
-                    blob = load_photo(obj['hash'])
-                    blob_base64 = base64.b64encode(blob).decode()
-                    image_url = 'data:image/jpeg;base64,' + blob_base64
-                    new_message.append({'type': 'image_url', 'image_url': {'url': image_url, 'detail': 'high'}})
-                    has_image = True
-                else:
-                    raise ValueError('Unknown message type in chat history')
-            message = new_message
+        assert isinstance(message, list)
+        new_message = []
+        for obj in message:
+            if obj['type'] == 'text':
+                new_message.append(obj['text'])
+            elif obj['type'] == 'image':
+                blob = load_photo(obj['hash'])
+                new_message.append({'mime_type': 'image/jpeg', 'data': blob})
+                has_image = True
+            else:
+                raise ValueError('Unknown message type in chat history')
+        message = new_message
         messages.append(message)
         should_be_bot = not should_be_bot
         if reply_id is None:
@@ -467,7 +440,7 @@ async def reply_handler(message):
         else:
             new_message = document_text
     else:
-        new_message = text
+        new_message = [{'type': 'text', 'text': text}]
 
     db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, model)
 
@@ -492,12 +465,12 @@ async def reply_handler(message):
                 await replymsgs.update(RichText.from_markdown(reply))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
-                    db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
+                    db[repr((chat_id, message_id))] = (True, [{'type': 'text', 'text': reply}], msg_id, model)
                 return
             except Exception as e:
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, cnt=%r): %s', chat_id, msg_id, error_cnt, e)
-                will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
+                will_retry = error_cnt <= OPENAI_MAX_RETRY
                 error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
                 if will_retry:
                     error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
