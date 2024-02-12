@@ -10,7 +10,9 @@ import base64
 import copy
 from collections import defaultdict
 from richtext import RichText
-import openai
+import aiohttp
+import jwt
+import json
 from telethon import TelegramClient, events, errors, functions, types
 import signal
 
@@ -22,51 +24,86 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': '$$', 'model': 'gpt-3.5-turbo-1106', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': '3$', 'model': 'gpt-3.5-turbo', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': '$', 'model': 'gpt-4-turbo-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"'},
-    {'prefix': '4$', 'model': 'gpt-4', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-
-    {'prefix': 'gpt-4-0125-preview$', 'model': 'gpt-4-0125-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-4-1106-preview$', 'model': 'gpt-4-1106-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-4-vision-preview$', 'model': 'gpt-4-vision-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-4-0613$', 'model': 'gpt-4-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-4-32k-0613$', 'model': 'gpt-4-32k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-
-    {'prefix': 'gpt-3.5-turbo-1106$', 'model': 'gpt-3.5-turbo-1106', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-3.5-turbo-0613$', 'model': 'gpt-3.5-turbo-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-3.5-turbo-16k-0613$', 'model': 'gpt-3.5-turbo-16k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-3.5-turbo-0301$', 'model': 'gpt-3.5-turbo-0301', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
+    {'prefix': 'z$', 'model': 'glm-4', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'gpt-4' # For compatibility with the old database format
-VISION_MODEL = 'gpt-4-vision-preview'
+DEFAULT_MODEL = 'glm-4' # For compatibility with the old database format
+VISION_MODEL = 'glm-4v'
 
 def get_prompt(model):
     if model == VISION_MODEL:
-        model = 'gpt-4-turbo-preview'
+        model = 'glm-4'
     for m in MODELS:
         if m['model'] == model:
             return m['prompt_template'].replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
     raise ValueError('Model not found')
 
-aclient = openai.AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    max_retries=0,
-    timeout=15,
-)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
 
 TELEGRAM_LENGTH_LIMIT = 4096
 TELEGRAM_MIN_INTERVAL = 3
-OPENAI_MAX_RETRY = 3
+OPENAI_MAX_RETRY = 0
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
 TEXT_FILE_SIZE_LIMIT = 100_000
 
 telegram_last_timestamp = defaultdict(lambda: None)
 telegram_rate_limit_lock = defaultdict(asyncio.Lock)
+
+class ZhipuAI:
+    def __init__(self, api_key):
+        self.api_key=api_key
+
+    def generate_token(self, exp_seconds):
+        id, secret = self.api_key.split(".")
+
+        payload = {
+            "api_key": id,
+            "exp": int(round(time.time() * 1000)) + exp_seconds * 1000,
+            "timestamp": int(round(time.time() * 1000)),
+        }
+
+        return jwt.encode(
+            payload,
+            secret,
+            algorithm="HS256",
+            headers={"alg": "HS256", "sign_type": "SIGN"},
+        )
+
+    async def create(self, model, messages):
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': self.generate_token(1000),
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+                headers=headers,
+                json={
+                    'model': model,
+                    'messages': messages,
+                    'stream': True,
+                }
+            ) as response:
+                if response.status != 200:
+                    content = await response.text()
+                    raise ValueError(f'HTTP status {response.status}: {content}')
+                async for line in response.content:
+                    logging.info('Received line: %r', line)
+                    line = line.decode().rstrip('\n')
+                    if line.startswith('{"error":'):
+                        yield json.loads(line)
+                        break
+                    if line.startswith('data:'):
+                        data = line[5:]
+                        if data.startswith(' '):
+                            data = data[1:]
+                        if data.startswith('[DONE]'):
+                            break
+                        yield json.loads(data)
+
+aclient = ZhipuAI(os.getenv("ZHIPUAI_API_KEY"))
 
 class PendingReplyManager:
     def __init__(self):
@@ -185,7 +222,8 @@ def load_photo(h):
 
 async def completion(chat_history, model, chat_id, msg_id): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
-    messages=[{"role": "system", "content": get_prompt(model)}]
+    system_prompt = get_prompt(model)
+    messages=[{"role": "system", "content": system_prompt}] if system_prompt else []
     roles = ["user", "assistant"]
     role_id = 0
     for msg in chat_history:
@@ -200,42 +238,29 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
                         if obj['type'] == 'image_url':
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
-    logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, remove_image(messages))
-    if model == VISION_MODEL:
-        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, max_tokens=4096)
-    else:
-        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
+    logging.info('Request (chat_id=%r, msg_id=%r, model=%r): %s', chat_id, msg_id, model, remove_image(messages))
+    stream = aclient.create(model=model, messages=messages)
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
         assert not finished
-        obj = response.choices[0]
-        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
-            assert all(item is None for item in [
-                obj.delta.content,
-                obj.delta.function_call,
-                obj.delta.role,
-                obj.delta.tool_calls,
-            ])
-            finish_reason = obj.finish_reason
-            if 'finish_details' in obj.model_extra and obj.finish_details is not None:
-                assert finish_reason is None
-                finish_reason = obj.finish_details['type']
+        if 'error' in response:
+            raise ValueError(json.dumps(response, ensure_ascii=False))
+        obj = response['choices'][0]
+        if 'finish_reason' in obj:
+            finish_reason = obj['finish_reason']
             if finish_reason == 'length':
                 yield '\n\n[!] Error: Output truncated due to limit'
             elif finish_reason == 'stop':
                 pass
-            elif finish_reason is not None:
-                if obj.finish_reason is not None:
-                    yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
-                else:
-                    yield f'\n\n[!] Error: finish_details="{obj.finish_details}"'
+            else:
+                yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
             finished = True
-        if obj.delta.role is not None:
-            if obj.delta.role != 'assistant':
+        if 'role' in obj['delta']:
+            if obj['delta']['role'] != 'assistant':
                 raise ValueError("Role error")
-        if obj.delta.content is not None:
-            yield obj.delta.content
+        if 'content' in obj['delta']:
+            yield obj['delta']['content']
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
@@ -261,7 +286,7 @@ def construct_chat_history(chat_id, msg_id):
                 elif obj['type'] == 'image':
                     blob = load_photo(obj['hash'])
                     blob_base64 = base64.b64encode(blob).decode()
-                    image_url = 'data:image/jpeg;base64,' + blob_base64
+                    image_url = blob_base64
                     new_message.append({'type': 'image_url', 'image_url': {'url': image_url, 'detail': 'high'}})
                     has_image = True
                 else:
@@ -508,7 +533,7 @@ async def reply_handler(message):
             except Exception as e:
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, cnt=%r): %s', chat_id, msg_id, error_cnt, e)
-                will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
+                will_retry = error_cnt <= OPENAI_MAX_RETRY
                 error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
                 if will_retry:
                     error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
