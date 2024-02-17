@@ -24,7 +24,7 @@ class RichText:
         return RichText([{'type': 'code', 'content': s}])
 
     @classmethod
-    def Pre(cls, s, language='plaintext'):
+    def Pre(cls, s, language=''):
         return RichText([{'type': 'pre', 'content': s, 'language': language}])
 
     @classmethod
@@ -101,6 +101,7 @@ class RichText:
         in_pre = False
         pre_lang = None
         fence_len = None
+        fence_prefix_spaces = None
         result = RichText()
         code = ''
         for line in lines:
@@ -108,7 +109,7 @@ class RichText:
                 if line.strip() == '`' * fence_len:
                     if code and not code.isspace():
                         if pre_lang is None:
-                            pre_lang = 'plaintext'
+                            pre_lang = ''
                         result += RichText.Pre(code, pre_lang)
                     else:
                         result += code
@@ -117,15 +118,22 @@ class RichText:
                     in_pre = False
                     pre_lang = None
                 else:
-                    code += line
+                    if len(line) - len(line.lstrip(' ')) >= fence_prefix_spaces:
+                        code += line[fence_prefix_spaces:]
+                    else:
+                        code += line.lstrip(' ')
             else:
                 if line.strip().startswith('```'):
                     fence_len = len(line.strip()) - len(line.strip().lstrip('`'))
+                    fence_prefix_spaces = len(line) - len(line.lstrip(' '))
                     pre_lang = line.strip().lstrip('`').strip()
-                    if not pre_lang:
-                        pre_lang = None
-                    result += line
-                    in_pre = True
+                    if '`' not in pre_lang:
+                        if not pre_lang:
+                            pre_lang = None
+                        result += line
+                        in_pre = True
+                    else:
+                        result += process_line(line)
                 else:
                     result += process_line(line)
         if in_pre:

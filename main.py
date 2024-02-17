@@ -22,28 +22,25 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': '$$', 'model': 'gpt-3.5-turbo-1106', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': '3$', 'model': 'gpt-3.5-turbo', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': '$', 'model': 'gpt-4-turbo-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"'},
-    {'prefix': '4$', 'model': 'gpt-4', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
+    {'prefix': '$$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
+    {'prefix': '$', 'model': 'gpt-4-0125-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Dec 2023. Current Beijing Time: {current_time}'},
 
-    {'prefix': 'gpt-4-0125-preview$', 'model': 'gpt-4-0125-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-4-1106-preview$', 'model': 'gpt-4-1106-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-4-vision-preview$', 'model': 'gpt-4-vision-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-4-0613$', 'model': 'gpt-4-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-4-32k-0613$', 'model': 'gpt-4-32k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
+    {'prefix': 'gpt-4-0125-preview$', 'model': 'gpt-4-0125-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Dec 2023. Current Beijing Time: {current_time}'},
+    {'prefix': 'gpt-4-1106-preview$', 'model': 'gpt-4-1106-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}'},
+    {'prefix': 'gpt-4-vision-preview$', 'model': 'gpt-4-vision-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}'},
+    {'prefix': 'gpt-4-0613$', 'model': 'gpt-4-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
+    {'prefix': 'gpt-4-32k-0613$', 'model': 'gpt-4-32k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
 
-    {'prefix': 'gpt-3.5-turbo-1106$', 'model': 'gpt-3.5-turbo-1106', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-3.5-turbo-0613$', 'model': 'gpt-3.5-turbo-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-3.5-turbo-16k-0613$', 'model': 'gpt-3.5-turbo-16k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
-    {'prefix': 'gpt-3.5-turbo-0301$', 'model': 'gpt-3.5-turbo-0301', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. This Telegram bot is developed by zzh whose username is zzh1996. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}"'},
+    {'prefix': 'gpt-3.5-turbo-0125$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
+    {'prefix': 'gpt-3.5-turbo-1106$', 'model': 'gpt-3.5-turbo-1106', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
+    {'prefix': 'gpt-3.5-turbo-0613$', 'model': 'gpt-3.5-turbo-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
+    {'prefix': 'gpt-3.5-turbo-16k-0613$', 'model': 'gpt-3.5-turbo-16k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
+    {'prefix': 'gpt-3.5-turbo-0301$', 'model': 'gpt-3.5-turbo-0301', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
 ]
-DEFAULT_MODEL = 'gpt-4' # For compatibility with the old database format
+DEFAULT_MODEL = 'gpt-4-0613' # For compatibility with the old database format
 VISION_MODEL = 'gpt-4-vision-preview'
 
 def get_prompt(model):
-    if model == VISION_MODEL:
-        model = 'gpt-4-turbo-preview'
     for m in MODELS:
         if m['model'] == model:
             return m['prompt_template'].replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
@@ -210,6 +207,11 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
         assert not finished
         obj = response.choices[0]
+        if obj.delta.role is not None:
+            if obj.delta.role != 'assistant':
+                raise ValueError("Role error")
+        if obj.delta.content is not None:
+            yield obj.delta.content
         if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
             assert all(item is None for item in [
                 obj.delta.content,
@@ -231,11 +233,6 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
                 else:
                     yield f'\n\n[!] Error: finish_details="{obj.finish_details}"'
             finished = True
-        if obj.delta.role is not None:
-            if obj.delta.role != 'assistant':
-                raise ValueError("Role error")
-        if obj.delta.content is not None:
-            yield obj.delta.content
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
