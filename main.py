@@ -10,7 +10,7 @@ import base64
 import copy
 from collections import defaultdict
 from richtext import RichText
-import openai
+from anthropic import AsyncAnthropic
 from telethon import TelegramClient, events, errors, functions, types
 import signal
 
@@ -22,23 +22,10 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': '$$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': '$', 'model': 'gpt-4-0125-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Dec 2023. Current Beijing Time: {current_time}'},
-
-    {'prefix': 'gpt-4-0125-preview$', 'model': 'gpt-4-0125-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Dec 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-1106-preview$', 'model': 'gpt-4-1106-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-vision-preview$', 'model': 'gpt-4-vision-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-0613$', 'model': 'gpt-4-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-32k-0613$', 'model': 'gpt-4-32k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-
-    {'prefix': 'gpt-3.5-turbo-0125$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-1106$', 'model': 'gpt-3.5-turbo-1106', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-0613$', 'model': 'gpt-3.5-turbo-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-16k-0613$', 'model': 'gpt-3.5-turbo-16k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-0301$', 'model': 'gpt-3.5-turbo-0301', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
+    {'prefix': 'c$$', 'model': 'claude-3-sonnet-20240229', 'prompt_template': ''},
+    {'prefix': 'c$', 'model': 'claude-3-opus-20240229', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'gpt-4-0613' # For compatibility with the old database format
-VISION_MODEL = 'gpt-4-vision-preview'
+DEFAULT_MODEL = 'claude-3-opus-20240229' # For compatibility with the old database format
 
 def get_prompt(model):
     for m in MODELS:
@@ -46,8 +33,8 @@ def get_prompt(model):
             return m['prompt_template'].replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
     raise ValueError('Model not found')
 
-aclient = openai.AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
+aclient = AsyncAnthropic(
+    api_key=os.getenv("ANTHROPIC_API_KEY"),
     max_retries=0,
     timeout=15,
 )
@@ -57,7 +44,7 @@ TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
 
 TELEGRAM_LENGTH_LIMIT = 4096
 TELEGRAM_MIN_INTERVAL = 3
-OPENAI_MAX_RETRY = 3
+OPENAI_MAX_RETRY = 0
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
 TEXT_FILE_SIZE_LIMIT = 100_000
@@ -182,7 +169,8 @@ def load_photo(h):
 
 async def completion(chat_history, model, chat_id, msg_id): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
-    messages=[{"role": "system", "content": get_prompt(model)}]
+    system_prompt = get_prompt(model)
+    messages=[{"role": "system", "content": system_prompt}] if system_prompt else []
     roles = ["user", "assistant"]
     role_id = 0
     for msg in chat_history:
@@ -194,45 +182,33 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
             if 'content' in message:
                 if isinstance(message['content'], list):
                     for obj in message['content']:
-                        if obj['type'] == 'image_url':
-                            obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
+                        if obj['type'] == 'image':
+                            obj['source']['data'] = obj['source']['data'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, remove_image(messages))
-    if model == VISION_MODEL:
-        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, max_tokens=4096)
-    else:
-        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
-    finished = False
-    async for response in stream:
-        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
-        assert not finished
-        obj = response.choices[0]
-        if obj.delta.role is not None:
-            if obj.delta.role != 'assistant':
-                raise ValueError("Role error")
-        if obj.delta.content is not None:
-            yield obj.delta.content
-        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
-            assert all(item is None for item in [
-                obj.delta.content,
-                obj.delta.function_call,
-                obj.delta.role,
-                obj.delta.tool_calls,
-            ])
-            finish_reason = obj.finish_reason
-            if 'finish_details' in obj.model_extra and obj.finish_details is not None:
-                assert finish_reason is None
-                finish_reason = obj.finish_details['type']
-            if finish_reason == 'length':
-                yield '\n\n[!] Error: Output truncated due to limit'
-            elif finish_reason == 'stop':
-                pass
-            elif finish_reason is not None:
-                if obj.finish_reason is not None:
-                    yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
+    stream = await aclient.messages.create(model=model, messages=messages, stream=True, max_tokens=4096)
+    async for event in stream:
+        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, event)
+        if event.type == 'message_start':
+            assert event.message.role == 'assistant'
+            assert event.message.content == []
+            assert event.message.stop_reason is None
+        elif event.type == 'content_block_delta':
+            assert event.index == 0
+            assert event.delta.type == 'text_delta'
+            yield event.delta.text
+        elif event.type == 'content_block_start':
+            assert event.index == 0
+            assert event.content_block.text == ''
+        elif event.type == 'content_block_stop':
+            assert event.index == 0
+        elif event.type == 'message_delta':
+            stop_reason = event.delta.stop_reason
+            if stop_reason is not None:
+                if stop_reason == 'end_turn':
+                    pass
                 else:
-                    yield f'\n\n[!] Error: finish_details="{obj.finish_details}"'
-            finished = True
+                    yield f'\n\n[!] Error: stop_reason="{stop_reason}"'
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
@@ -258,8 +234,7 @@ def construct_chat_history(chat_id, msg_id):
                 elif obj['type'] == 'image':
                     blob = load_photo(obj['hash'])
                     blob_base64 = base64.b64encode(blob).decode()
-                    image_url = 'data:image/jpeg;base64,' + blob_base64
-                    new_message.append({'type': 'image_url', 'image_url': {'url': image_url, 'detail': 'high'}})
+                    new_message.append({'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': blob_base64}})
                     has_image = True
                 else:
                     raise ValueError('Unknown message type in chat history')
@@ -272,8 +247,6 @@ def construct_chat_history(chat_id, msg_id):
     if len(messages) % 2 != 1:
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
         return None, None
-    if has_image:
-        model = VISION_MODEL
     return messages[::-1], model
 
 @only_admin
@@ -505,7 +478,7 @@ async def reply_handler(message):
             except Exception as e:
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, cnt=%r): %s', chat_id, msg_id, error_cnt, e)
-                will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
+                will_retry = error_cnt <= OPENAI_MAX_RETRY
                 error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
                 if will_retry:
                     error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
