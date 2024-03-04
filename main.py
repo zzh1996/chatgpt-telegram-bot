@@ -44,7 +44,7 @@ TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
 
 TELEGRAM_LENGTH_LIMIT = 4096
 TELEGRAM_MIN_INTERVAL = 3
-OPENAI_MAX_RETRY = 0
+OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
 TEXT_FILE_SIZE_LIMIT = 100_000
@@ -449,6 +449,10 @@ async def reply_handler(message):
             new_message = document_text
     else:
         new_message = text
+
+    if (isinstance(new_message, str) and len(new_message) == 0) or (isinstance(new_message, list) and sum(len(m['text']) for m in new_message if m['type'] == 'text') == 0):
+        await send_message(chat_id, f"[!] Error: Input text should not be empty", msg_id)
+        return
 
     db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, model)
 
