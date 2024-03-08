@@ -2,7 +2,6 @@ import asyncio
 import os
 import logging
 import shelve
-import datetime
 import time
 import traceback
 import hashlib
@@ -22,16 +21,9 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'c$$', 'model': 'claude-3-sonnet-20240229', 'prompt_template': ''},
-    {'prefix': 'c$', 'model': 'claude-3-opus-20240229', 'prompt_template': ''},
+    {'prefix': 'cs$$', 'model': 'claude-3-sonnet-20240229'},
+    {'prefix': 'cs$', 'model': 'claude-3-opus-20240229'},
 ]
-DEFAULT_MODEL = 'claude-3-opus-20240229' # For compatibility with the old database format
-
-def get_prompt(model):
-    for m in MODELS:
-        if m['model'] == model:
-            return m['prompt_template'].replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
-    raise ValueError('Model not found')
 
 aclient = AsyncAnthropic(
     api_key=os.getenv("ANTHROPIC_API_KEY"),
@@ -167,15 +159,7 @@ def load_photo(h):
     with open(path, 'rb') as f:
         return f.read()
 
-async def completion(chat_history, model, chat_id, msg_id): # chat_history = [user, ai, user, ai, ..., user]
-    assert len(chat_history) % 2 == 1
-    system_prompt = get_prompt(model)
-    messages=[{"role": "system", "content": system_prompt}] if system_prompt else []
-    roles = ["user", "assistant"]
-    role_id = 0
-    for msg in chat_history:
-        messages.append({"role": roles[role_id], "content": msg})
-        role_id = 1 - role_id
+async def completion(messages, model, chat_id, msg_id, system_prompt):
     def remove_image(messages):
         new_messages = copy.deepcopy(messages)
         for message in new_messages:
@@ -185,8 +169,8 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
                         if obj['type'] == 'image':
                             obj['source']['data'] = obj['source']['data'][:50] + '...'
         return new_messages
-    logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, remove_image(messages))
-    stream = await aclient.messages.create(model=model, messages=messages, stream=True, max_tokens=4096)
+    logging.info('Request (chat_id=%r, msg_id=%r, system_prompt=%r): %s', chat_id, msg_id, system_prompt, remove_image(messages))
+    stream = await aclient.messages.create(model=model, messages=messages, stream=True, max_tokens=4096, system=system_prompt)
     async for event in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, event)
         if event.type == 'message_start':
@@ -211,43 +195,43 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
                     yield f'\n\n[!] Error: stop_reason="{stop_reason}"'
 
 def construct_chat_history(chat_id, msg_id):
+    model = None
     messages = []
-    should_be_bot = False
-    model = DEFAULT_MODEL
-    has_image = False
+    system_prompt = ''
     while True:
         key = repr((chat_id, msg_id))
         if key not in db:
             logging.error('History message not found (chat_id=%r, msg_id=%r)', chat_id, msg_id)
             return None, None
-        is_bot, message, reply_id, *params = db[key]
-        if params:
-            model = params[0]
-        if is_bot != should_be_bot:
-            logging.error('Role does not match (chat_id=%r, msg_id=%r)', chat_id, msg_id)
-            return None, None
-        if isinstance(message, list):
-            new_message = []
-            for obj in message:
-                if obj['type'] == 'text':
-                    new_message.append(obj)
-                elif obj['type'] == 'image':
-                    blob = load_photo(obj['hash'])
-                    blob_base64 = base64.b64encode(blob).decode()
-                    new_message.append({'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': blob_base64}})
-                    has_image = True
-                else:
-                    raise ValueError('Unknown message type in chat history')
-            message = new_message
-        messages.append(message)
-        should_be_bot = not should_be_bot
+        msgs, reply_id = db[key]
+        new_messages = []
+        for i in msgs:
+            if "model" in i:
+                model = i["model"]
+            elif i['role'] == 'system':
+                system_prompt = i['content']
+            else:
+                message = i['content']
+                if isinstance(message, list):
+                    new_message = []
+                    for obj in message:
+                        if obj['type'] == 'text':
+                            new_message.append(obj)
+                        elif obj['type'] == 'image':
+                            blob = load_photo(obj['hash'])
+                            blob_base64 = base64.b64encode(blob).decode()
+                            new_message.append({'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': blob_base64}})
+                        else:
+                            raise ValueError('Unknown message type in chat history')
+                    message = new_message
+                new_messages.append({"role": i["role"], "content": message})
+        messages = new_messages + messages
         if reply_id is None:
             break
         msg_id = reply_id
-    if len(messages) % 2 != 1:
-        logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
-        return None, None
-    return messages[::-1], model
+    if model is None:
+        return None, None, None
+    return messages, model, system_prompt
 
 @only_admin
 async def add_whitelist_handler(message):
@@ -387,16 +371,28 @@ async def reply_handler(message):
     text = message.message
     logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r, photo=%s, document=%s', chat_id, sender_id, msg_id, text, message.photo, message.document)
     reply_to_id = None
-    model = DEFAULT_MODEL
     extra_photo_message = None
     extra_document_message = None
     if not text and message.photo is None and message.document is None: # unknown media types
         return
+    new_messages = None
     if message.is_reply:
         reply_to_message = await message.get_reply_message()
         if reply_to_message.sender_id == bot_id: # user reply to bot message
             reply_to_id = message.reply_to.reply_to_msg_id
+            msgs = []
+            splits = text.split('$$$')
+            if len(splits) % 2 == 0:
+                await send_message(chat_id, 'Usage: user$$$assistant$$$...$$$user', msg_id)
+                return
+            for i, text in enumerate(splits):
+                if i % 2 == 0:
+                    role = 'user'
+                else:
+                    role = 'assistant'
+                msgs.append({"role": role, "content": text})
             await pending_reply_manager.wait_for((chat_id, reply_to_id))
+            new_messages = msgs
         elif reply_to_message.photo is not None: # user reply to a photo
             extra_photo_message = reply_to_message
         elif reply_to_message.document is not None: # user reply to a document
@@ -404,15 +400,31 @@ async def reply_handler(message):
         else:
             return
     if not message.is_reply or extra_photo_message is not None or extra_document_message is not None: # new message
+        matched_prefix = None
         for m in MODELS:
             if text.startswith(m['prefix']):
                 text = text[len(m['prefix']):]
                 model = m['model']
+                matched_prefix = m['prefix']
                 break
         else: # not reply or new message to bot
             if chat_id == sender_id: # if in private chat, send hint
                 await send_message(chat_id, 'Please start a new conversation with $ or reply to a bot message', msg_id)
             return
+        msgs = [{"model": model}]
+        splits = text.split('$$$')
+        if len(splits) % 2 or len(splits) < 2:
+            await send_message(chat_id, f'Usage: {matched_prefix}system$$$user$$$assistant$$$...$$$user', msg_id)
+            return
+        for i, text in enumerate(splits):
+            if i == 0:
+                role = 'system'
+            elif i % 2:
+                role = 'user'
+            else:
+                role = 'assistant'
+            msgs.append({"role": role, "content": text})
+        new_messages = msgs
 
     photo_message = message if message.photo is not None else extra_photo_message
     photo_hash = None
@@ -441,22 +453,29 @@ async def reply_handler(message):
             return
 
     if photo_hash:
-        new_message = [{'type': 'text', 'text': text}, {'type': 'image', 'hash': photo_hash}]
+        if len(new_messages) > 1:
+            await send_message(chat_id, 'Photo not supported in multiple messages', msg_id)
+            return
+        new_messages[0]['content'] = [{'type': 'text', 'text': new_messages[0]['content']}, {'type': 'image', 'hash': photo_hash}]
     elif document_text:
-        if text:
-            new_message = document_text + '\n\n' + text
+        if len(new_messages) > 1:
+            await send_message(chat_id, 'File not supported in multiple messages', msg_id)
+            return
+        if new_messages[0]['content']:
+            new_messages[0]['content'] = document_text + '\n\n' + new_messages[0]['content']
         else:
-            new_message = document_text
-    else:
-        new_message = text
+            new_messages[0]['content'] = document_text
 
-    if (isinstance(new_message, str) and len(new_message) == 0) or (isinstance(new_message, list) and sum(len(m['text']) for m in new_message if m['type'] == 'text') == 0):
-        await send_message(chat_id, f"[!] Error: Input text should not be empty", msg_id)
-        return
+    for i in new_messages:
+        if 'content' in i:
+            new_message = i['content']
+            if (isinstance(new_message, str) and len(new_message) == 0) or (isinstance(new_message, list) and sum(len(m['text']) for m in new_message if m['type'] == 'text') == 0):
+                await send_message(chat_id, f"[!] Error: Input text should not be empty", msg_id)
+                return
 
-    db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, model)
+    db[repr((chat_id, msg_id))] = new_messages, reply_to_id
 
-    chat_history, model = construct_chat_history(chat_id, msg_id)
+    chat_history, model, system_prompt = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
         await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id)
         return
@@ -466,7 +485,7 @@ async def reply_handler(message):
         reply = ''
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
-                stream = completion(chat_history, model, chat_id, msg_id)
+                stream = completion(chat_history, model, chat_id, msg_id, system_prompt)
                 first_update_timestamp = None
                 async for delta in stream:
                     reply += delta
@@ -477,7 +496,7 @@ async def reply_handler(message):
                 await replymsgs.update(RichText.from_markdown(reply))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
-                    db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
+                    db[repr((chat_id, message_id))] = [{"role": "assistant", "content": reply}], msg_id
                 return
             except Exception as e:
                 error_cnt += 1
@@ -514,8 +533,8 @@ async def main():
     rootLogger.addHandler(consoleHandler)
 
     with shelve.open('db') as db:
-        # db[(chat_id, msg_id)] = (is_bot, text, reply_id, model)
-        # compatible old db format: db[(chat_id, msg_id)] = (is_bot, text, reply_id)
+        # db[(chat_id, msg_id)] = (msgs, reply_id)
+        # msgs = [{"model": "gpt-4"}, {"role": "system/user/assistant", "content": "foo"}, ...]
         # db['whitelist'] = set(whitelist_chat_ids)
         if 'whitelist' not in db:
             db['whitelist'] = {ADMIN_ID}
