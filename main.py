@@ -11,6 +11,7 @@ import copy
 from collections import defaultdict
 from richtext import RichText
 import google.generativeai as genai
+from google.api_core import exceptions
 from telethon import TelegramClient, events, errors, functions, types
 import signal
 
@@ -22,18 +23,10 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'g$', 'model': 'gemini-pro', 'prompt_template': ''},
+    {'prefix': 'g$$', 'model': 'gemini-1.0-pro-latest', 'vision_model': 'gemini-pro-vision'},
+    {'prefix': 'g$', 'model': 'gemini-1.5-pro-latest'},
 ]
-DEFAULT_MODEL = 'gemini-pro' # For compatibility with the old database format
-VISION_MODEL = 'gemini-pro-vision'
-
-def get_prompt(model):
-    if model == VISION_MODEL:
-        model = 'gemini-pro'
-    for m in MODELS:
-        if m['model'] == model:
-            return m['prompt_template'].replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
-    raise ValueError('Model not found')
+DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
 
 genai.configure(api_key=os.getenv('GEMINI_API_KEY'), transport='grpc_asyncio')
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -42,8 +35,8 @@ TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
 
 TELEGRAM_LENGTH_LIMIT = 4096
 TELEGRAM_MIN_INTERVAL = 3
-OPENAI_MAX_RETRY = 0
-OPENAI_RETRY_INTERVAL = 10
+OPENAI_MAX_RETRY = 3
+OPENAI_RETRY_INTERVAL = 30
 FIRST_BATCH_DELAY = 1
 TEXT_FILE_SIZE_LIMIT = 100_000
 
@@ -238,7 +231,9 @@ def construct_chat_history(chat_id, msg_id):
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
         return None, None
     if has_image:
-        model = VISION_MODEL
+        for m in MODELS:
+            if m['model'] == model and 'vision_model' in m:
+                model = m['vision_model']
     return messages[::-1], model
 
 @only_admin
@@ -470,7 +465,7 @@ async def reply_handler(message):
             except Exception as e:
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, cnt=%r): %s', chat_id, msg_id, error_cnt, e)
-                will_retry = error_cnt <= OPENAI_MAX_RETRY
+                will_retry = not isinstance (e, exceptions.InvalidArgument) and error_cnt <= OPENAI_MAX_RETRY
                 error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
                 if will_retry:
                     error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
