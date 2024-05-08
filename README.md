@@ -2,6 +2,17 @@
 
 ![Demo](https://user-images.githubusercontent.com/10773481/235257879-ce91d3d3-769a-4089-addd-2ac9eea26f35.gif)
 
+## Branches
+
+- **master** - The OpenAI GPT models. Stable version.
+- **dev** - The OpenAI GPT models. Development version.
+- **system-prompt** - The OpenAI GPT models. Allows users to specify a system prompt arbitrarily.
+- **gemini** - The Google Gemini models.
+- **claude** - The Anthropic Claude models.
+- **glm** - The Zhipu AI GLM-4 models.
+- **gpts** - Allows customization of different prefixes corresponding to different system prompts, similar to ChatGPT's GPTs functionality.
+- **plugins** - Utilizes the Function calling feature of GPT-4 to support Google and Bing searches, web browsing, YouTube subtitle downloads, Wolfram Alpha, and a calculator plugin.
+
 ## Features
 
 1. **Real-time output streaming** - Receive AI model outputs while they are being generated using the message editing feature of Telegram.
