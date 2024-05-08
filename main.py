@@ -10,7 +10,8 @@ import base64
 import copy
 from collections import defaultdict
 from richtext import RichText
-import openai
+import aioboto3
+import json
 from telethon import TelegramClient, events, errors, functions, types
 import signal
 
@@ -22,24 +23,11 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': '$$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': '$', 'model': 'gpt-4-turbo-2024-04-09', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Dec 2023. Current Beijing Time: {current_time}'},
-
-    {'prefix': 'gpt-4-turbo-2024-04-09$', 'model': 'gpt-4-turbo-2024-04-09', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Dec 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-0125-preview$', 'model': 'gpt-4-0125-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Dec 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-1106-preview$', 'model': 'gpt-4-1106-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-vision-preview$', 'model': 'gpt-4-vision-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-0613$', 'model': 'gpt-4-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-32k-0613$', 'model': 'gpt-4-32k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-
-    {'prefix': 'gpt-3.5-turbo-0125$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-1106$', 'model': 'gpt-3.5-turbo-1106', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-0613$', 'model': 'gpt-3.5-turbo-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-16k-0613$', 'model': 'gpt-3.5-turbo-16k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-0301$', 'model': 'gpt-3.5-turbo-0301', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
+    {'prefix': 'l$', 'model': 'meta.llama3-70b-instruct-v1:0', 'prompt_template': ''},
+    {'prefix': 'cr$', 'model': 'cohere.command-r-plus-v1:0', 'prompt_template': ''},
+    {'prefix': 'm$', 'model': 'mistral.mistral-large-2402-v1:0', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'gpt-4-0613' # For compatibility with the old database format
-VISION_MODEL = 'gpt-4-turbo-2024-04-09'
+DEFAULT_MODEL = 'meta.llama3-70b-instruct-v1:0' # For compatibility with the old database format
 
 def get_prompt(model):
     for m in MODELS:
@@ -47,11 +35,102 @@ def get_prompt(model):
             return m['prompt_template'].replace('{current_time}', (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
     raise ValueError('Model not found')
 
-aclient = openai.AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    max_retries=0,
-    timeout=15,
-)
+class Bedrock:
+    def __init__(self):
+        self.session = aioboto3.Session(
+            aws_access_key_id=os.environ['aws_access_key_id'],
+            aws_secret_access_key=os.environ['aws_secret_access_key'],
+            region_name=os.environ['aws_region_name'],
+        )
+
+    async def create(self, model, messages):
+        body = self.construct_body(model, messages)
+        logging.info('Request body: %r', body)
+        async with self.session.client('bedrock-runtime') as bedrock_runtime:
+            response = await bedrock_runtime.invoke_model_with_response_stream(
+                body=json.dumps(body),
+                modelId=model,
+                accept='application/json',
+                contentType='application/json',
+            )
+            async for event in response['body']:
+                data = json.loads(event['chunk']['bytes'])
+                logging.info('Response event: %r', data)
+                yield self.process_output(model, data)
+
+    def construct_body(self, model, messages):
+        if model == 'meta.llama3-70b-instruct-v1:0':
+            prompt = '<|begin_of_text|>'
+            for msg in messages:
+                if not isinstance(msg['content'], str):
+                    raise ValueError('Unsupported message type')
+                prompt += f'<|start_header_id|>{msg['role']}<|end_header_id|>{msg['content']}<|eot_id|>'
+            prompt += '<|start_header_id|>assistant<|end_header_id|>'
+            return {
+                'prompt': prompt,
+                'max_gen_len': 2048,
+            }
+        elif model == 'cohere.command-r-plus-v1:0':
+            chat_history = []
+            for msg in messages[:-1]:
+                if not isinstance(msg['content'], str):
+                    raise ValueError('Unsupported message type')
+                if msg['role'] == 'user':
+                    chat_history.append({'role': 'USER', 'message': msg['content']})
+                elif msg['role'] == 'assistant':
+                    chat_history.append({'role': 'CHATBOT', 'message': msg['content']})
+                else:
+                    raise ValueError('Unsupported role')
+            if not isinstance(messages[-1]['content'], str):
+                raise ValueError('Unsupported message type')
+            return {
+                'message': messages[-1]['content'],
+                'chat_history': chat_history,
+                'max_tokens': 32768,
+            }
+        elif model == 'mistral.mistral-large-2402-v1:0':
+            prompt = '<s>'
+            for msg in messages:
+                if not isinstance(msg['content'], str):
+                    raise ValueError('Unsupported message type')
+                if msg['role'] == 'user':
+                    prompt += '[INST]' + msg['content'] + '[/INST]'
+                elif msg['role'] == 'assistant':
+                    prompt += msg['content'] + '</s>'
+                else:
+                    raise ValueError('Unsupported role')
+            return {
+                'prompt': prompt,
+                # 'max_tokens': 8192,
+            }
+        else:
+            raise ValueError('Unsupported model')
+
+    def process_output(self, model, response):
+        if model == 'meta.llama3-70b-instruct-v1:0':
+            return {
+                'content': response['generation'] if 'generation' in response else None,
+                'finish_reason': response['stop_reason'] if 'stop_reason' in response else None,
+            }
+        elif model == 'cohere.command-r-plus-v1:0':
+            finish_reason = response['finish_reason'] if 'finish_reason' in response else None
+            if finish_reason == 'COMPLETE':
+                finish_reason = 'stop'
+            return {
+                'content': response['text'] if 'text' in response else None,
+                'finish_reason': finish_reason,
+            }
+        elif model == 'mistral.mistral-large-2402-v1:0':
+            response = response['outputs'][0]
+            return {
+                'content': response['text'] if 'text' in response else None,
+                'finish_reason': response['stop_reason'] if 'stop_reason' in response else None,
+            }
+        else:
+            raise ValueError('Unsupported model')
+
+aclient = Bedrock()
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
@@ -183,7 +262,8 @@ def load_photo(h):
 
 async def completion(chat_history, model, chat_id, msg_id): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
-    messages=[{"role": "system", "content": get_prompt(model)}]
+    system_prompt = get_prompt(model)
+    messages=[{"role": "system", "content": system_prompt}] if system_prompt else []
     roles = ["user", "assistant"]
     role_id = 0
     for msg in chat_history:
@@ -199,40 +279,21 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, remove_image(messages))
-    if model == VISION_MODEL:
-        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, max_tokens=4096)
-    else:
-        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
+    stream = aclient.create(model=model, messages=messages)
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
         assert not finished
-        obj = response.choices[0]
-        if obj.delta.role is not None:
-            if obj.delta.role != 'assistant':
-                raise ValueError("Role error")
-        if obj.delta.content is not None:
-            yield obj.delta.content
-        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
-            assert all(item is None for item in [
-                obj.delta.content,
-                obj.delta.function_call,
-                obj.delta.role,
-                obj.delta.tool_calls,
-            ])
-            finish_reason = obj.finish_reason
-            if 'finish_details' in obj.model_extra and obj.finish_details is not None:
-                assert finish_reason is None
-                finish_reason = obj.finish_details['type']
+        if response['content']:
+            yield response['content']
+        if response['finish_reason']:
+            finish_reason = response['finish_reason']
             if finish_reason == 'length':
                 yield '\n\n[!] Error: Output truncated due to limit'
             elif finish_reason == 'stop':
                 pass
-            elif finish_reason is not None:
-                if obj.finish_reason is not None:
-                    yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
-                else:
-                    yield f'\n\n[!] Error: finish_details="{obj.finish_details}"'
+            else:
+                yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
             finished = True
 
 def construct_chat_history(chat_id, msg_id):
@@ -273,8 +334,6 @@ def construct_chat_history(chat_id, msg_id):
     if len(messages) % 2 != 1:
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
         return None, None
-    if has_image:
-        model = VISION_MODEL
     return messages[::-1], model
 
 @only_admin
@@ -447,6 +506,9 @@ async def reply_handler(message):
     photo_message = message if message.photo is not None else extra_photo_message
     photo_hash = None
     if photo_message is not None:
+        await send_message(chat_id, 'Images are not supported', msg_id)
+        return
+
         if photo_message.grouped_id is not None:
             await send_message(chat_id, 'Grouped photos are not yet supported, but will be supported soon', msg_id)
             return
@@ -497,6 +559,10 @@ async def reply_handler(message):
                 async for delta in stream:
                     reply += delta
                     if first_update_timestamp is None:
+                        if model == 'meta.llama3-70b-instruct-v1:0' and reply.startswith('\n\n'):
+                            reply = reply[2:]
+                        if model == 'mistral.mistral-large-2402-v1:0' and reply.startswith(' '):
+                            reply = reply[1:]
                         first_update_timestamp = time.time()
                     if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
                         await replymsgs.update(RichText.from_markdown(reply) + ' [!Generating...]')
@@ -508,7 +574,7 @@ async def reply_handler(message):
             except Exception as e:
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, cnt=%r): %s', chat_id, msg_id, error_cnt, e)
-                will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
+                will_retry = error_cnt <= OPENAI_MAX_RETRY
                 error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
                 if will_retry:
                     error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'

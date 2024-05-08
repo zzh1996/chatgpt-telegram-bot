@@ -12,7 +12,9 @@ services:
         tty: true
         init: true
         environment:
-          - OPENAI_API_KEY=
           - TELEGRAM_BOT_TOKEN=
           - TELEGRAM_API_ID=
           - TELEGRAM_API_HASH=
+          - aws_access_key_id=
+          - aws_secret_access_key=
+          - aws_region_name=
