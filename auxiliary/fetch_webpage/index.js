@@ -4,7 +4,12 @@
 // Please refer to https://github.com/Sparticuz/chromium to deploy on AWS Lambda
 
 const chromium = require("@sparticuz/chromium");
-const puppeteer = require("puppeteer-core");
+//const puppeteer = require("puppeteer-core");
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+puppeteer.use(StealthPlugin());
+const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
+puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
 
 // https://github.com/puppeteer/puppeteer/issues/305#issuecomment-385145048
 async function scroll(page) {
@@ -34,7 +39,7 @@ async function scroll(page) {
 
 async function main(browser, url) {
   const page = await browser.newPage();
-  await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
+  await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
   await page.goto(url, {waitUntil: 'domcontentloaded'});
   try {
     await new Promise(r => setTimeout(r, 3000));
@@ -69,6 +74,7 @@ exports.handler = async (event, context) => {
       ]),
       executablePath: await chromium.executablePath(),
       headless: chromium.headless,
+      dumpio: true,
     });
     const {title, data} = await main(browser, event.url);
     return context.succeed({title, data});
