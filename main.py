@@ -12,7 +12,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from telegram.error import RetryAfter, NetworkError, BadRequest
 
 ADMIN_ID = 71863318
-DEFAULT_MODEL = "gpt-4"
+DEFAULT_MODEL = "gpt-4o"
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
