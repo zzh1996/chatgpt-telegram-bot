@@ -13,7 +13,7 @@ from telethon import TelegramClient, events, errors, functions, types
 
 ADMIN_ID = 71863318
 
-MODEL = 'gpt-4-1106-preview'
+MODEL = 'gpt-4o'
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
