@@ -21,7 +21,7 @@ from plugins.youtube import Youtube
 from plugins.wolframalpha import WolframAlpha
 
 ADMIN_ID = 71863318
-DEFAULT_MODEL = "gpt-4-turbo-preview"
+DEFAULT_MODEL = "gpt-4o"
 TRIGGER = 'p$'
 PLUGINS = [Search, Browsing, Youtube, Calculator, WolframAlpha]
 
