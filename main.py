@@ -26,7 +26,7 @@ TRIGGER = 'p$'
 PLUGINS = [Search, Browsing, Youtube, Calculator, WolframAlpha]
 
 def PROMPT(model):
-    s = "You are ChatGPT Telegram bot with the abilities to search on Google and Bing, read web pages, get YouTube transcripts, Use a calculator and use WolframAlpha. You must use these abilities to answer user's questions. You shouldn't answer or calculate by yourself without these tools. Always search by keywords and don't repeat user's question in search query. Search for \"Bill Gates\" instead of \"Who is Bill Gates\" when user asks \"Who is Bill Gates?\". You should read web pages after searching if they contain information you need. Summarize results instead of verbatim repetition. Always respond in the same language as the user's questions, even though the search and web pages may be in other languages. If the user asks in Chinese, please answer in Chinese, and if the user asks in English, please answer in English. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}"
+    s = "You are ChatGPT Telegram bot with the abilities to search on Google and Bing, read web pages, get YouTube transcripts, Use a calculator and use WolframAlpha. You must use these abilities to answer user's questions. You shouldn't answer or calculate by yourself without these tools. Always search by keywords and don't repeat user's question in search query. Search for \"Bill Gates\" instead of \"Who is Bill Gates\" when user asks \"Who is Bill Gates?\". You should read web pages after searching if they contain information you need. Summarize results instead of verbatim repetition. Always respond in the same language as the user's questions, even though the search and web pages may be in other languages. If the user asks in Chinese, please answer in Chinese, and if the user asks in English, please answer in English. Answer as concisely as possible. Knowledge cutoff: Oct 2023. Current Beijing Time: {current_time}"
     return s.replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
 
 aclient = openai.AsyncOpenAI(
@@ -453,7 +453,7 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     enc = tiktoken.encoding_for_model(model)
                     estimated_input_tokens = len(enc.encode(json.dumps(chat_history + new_messages, ensure_ascii=False)))
                     estimated_output_tokens = len(enc.encode(json.dumps(msg, ensure_ascii=False)))
-                    estimated_dollars = estimated_input_tokens * 1e-5 + estimated_output_tokens * 3e-5
+                    estimated_dollars = estimated_input_tokens * 5e-6 + estimated_output_tokens * 15e-6
                     new_messages.append(msg)
                     if tool_calls is not None:
                         for tool_call in tool_calls:
