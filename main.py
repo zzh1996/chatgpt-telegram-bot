@@ -192,7 +192,10 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, remove_image(messages))
-    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
+    if model == VISION_MODEL:
+        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
+    else:
+        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, max_tokens=4096)
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
