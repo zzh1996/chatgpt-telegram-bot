@@ -15,8 +15,11 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': '$$', 'model': 'gpt-3.5-turbo-0125'},
-    {'prefix': '$', 'model': 'gpt-4-turbo-2024-04-09'},
+    {'prefix': '$', 'model': 'gpt-4o-2024-05-13'},
     {'prefix': '4$', 'model': 'gpt-4-turbo-2024-04-09'},
+
+    {'prefix': 'gpt-4o-2024-05-13$', 'model': 'gpt-4o-2024-05-13'},
+    {'prefix': 'gpt-4o$', 'model': 'gpt-4o'},
 
     {'prefix': 'gpt-4-turbo-2024-04-09$', 'model': 'gpt-4-turbo-2024-04-09'},
     {'prefix': 'gpt-4-0125-preview$', 'model': 'gpt-4-0125-preview'},
