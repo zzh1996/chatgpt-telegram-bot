@@ -12,6 +12,25 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from telegram.error import RetryAfter, NetworkError, BadRequest
 
 ADMIN_ID = 71863318
+
+MODELS = [
+    {'prefix': '$$', 'model': 'gpt-3.5-turbo-0125'},
+    {'prefix': '$', 'model': 'gpt-4-turbo-2024-04-09'},
+    {'prefix': '4$', 'model': 'gpt-4-turbo-2024-04-09'},
+
+    {'prefix': 'gpt-4-turbo-2024-04-09$', 'model': 'gpt-4-turbo-2024-04-09'},
+    {'prefix': 'gpt-4-0125-preview$', 'model': 'gpt-4-0125-preview'},
+    {'prefix': 'gpt-4-1106-preview$', 'model': 'gpt-4-1106-preview'},
+    {'prefix': 'gpt-4-vision-preview$', 'model': 'gpt-4-vision-preview'},
+    {'prefix': 'gpt-4-0613$', 'model': 'gpt-4-0613'},
+    {'prefix': 'gpt-4-32k-0613$', 'model': 'gpt-4-32k-0613'},
+
+    {'prefix': 'gpt-3.5-turbo-0125$', 'model': 'gpt-3.5-turbo-0125'},
+    {'prefix': 'gpt-3.5-turbo-1106$', 'model': 'gpt-3.5-turbo-1106'},
+    {'prefix': 'gpt-3.5-turbo-0613$', 'model': 'gpt-3.5-turbo-0613'},
+    {'prefix': 'gpt-3.5-turbo-16k-0613$', 'model': 'gpt-3.5-turbo-16k-0613'},
+    {'prefix': 'gpt-3.5-turbo-0301$', 'model': 'gpt-3.5-turbo-0301'},
+]
 DEFAULT_MODEL = "gpt-4o"
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -322,17 +341,20 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 role = 'assistant'
             msgs.append({"role": role, "content": text})
         db[repr((chat_id, msg_id))] = msgs, reply_to_id
-    elif text.startswith('s$'): # new message
-        model = DEFAULT_MODEL
-        if text.startswith('s$$'):
-            text = text[3:]
-            model = "gpt-3.5-turbo"
-        else:
-            text = text[2:]
+    else:
+        for m in MODELS:
+            if text.startswith('s' + m['prefix']):
+                text = text[len('s' + m['prefix']):]
+                model = m['model']
+                break
+        else: # not reply or new message to bot
+            if update.effective_chat.id == update.message.from_user.id: # if in private chat, send hint
+                await send_message(update.effective_chat.id, 'Please start a new conversation with $ or reply to a bot message', update.message.message_id)
+            return
         msgs = [{"model": model}]
         splits = text.split('$$$')
         if len(splits) % 2 or len(splits) < 2:
-            await send_message(update.effective_chat.id, 'Usage: s$system$$$user$$$assistant$$$...$$$user', update.message.message_id)
+            await send_message(update.effective_chat.id, 'Usage: s[$|$$|model$]system$$$user$$$assistant$$$...$$$user', update.message.message_id)
             return
         for i, text in enumerate(splits):
             if i == 0:
@@ -343,10 +365,6 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 role = 'assistant'
             msgs.append({"role": role, "content": text})
         db[repr((chat_id, msg_id))] = msgs, None
-    else: # not reply or new message to bot
-        if update.effective_chat.id == update.message.from_user.id: # if in private chat, send hint
-            await send_message(update.effective_chat.id, 'Please start a new conversation with $ or reply to a bot message', update.message.message_id)
-        return
 
     chat_history, model = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
