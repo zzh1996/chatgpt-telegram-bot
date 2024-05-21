@@ -231,6 +231,16 @@ def construct_chat_history(chat_id, msg_id):
         msg_id = reply_id
     if model is None:
         return None, None, None
+
+    # merge messages of the same role, supporting https://docs.anthropic.com/en/docs/prefill-claudes-response
+    new_messages = []
+    for i in messages:
+        if new_messages and i["role"] == new_messages[-1]["role"] and isinstance(i["content"], str) and isinstance(new_messages[-1]["content"], str):
+            new_messages[-1]["content"] += i["content"]
+        else:
+            new_messages.append(i)
+    messages = new_messages
+
     return messages, model, system_prompt
 
 @only_admin
@@ -382,9 +392,6 @@ async def reply_handler(message):
             reply_to_id = message.reply_to.reply_to_msg_id
             msgs = []
             splits = text.split('$$$')
-            if len(splits) % 2 == 0:
-                await send_message(chat_id, 'Usage: user$$$assistant$$$...$$$user', msg_id)
-                return
             for i, text in enumerate(splits):
                 if i % 2 == 0:
                     role = 'user'
@@ -413,7 +420,7 @@ async def reply_handler(message):
             return
         msgs = [{"model": model}]
         splits = text.split('$$$')
-        if len(splits) % 2 or len(splits) < 2:
+        if len(splits) < 2:
             await send_message(chat_id, f'Usage: {matched_prefix}system$$$user$$$assistant$$$...$$$user', msg_id)
             return
         for i, text in enumerate(splits):
