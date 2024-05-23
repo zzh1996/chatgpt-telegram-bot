@@ -25,7 +25,7 @@ ADMIN_ID = 71863318
 MODELS = [
     {'prefix': 'l$', 'model': 'meta.llama3-70b-instruct-v1:0', 'prompt_template': ''},
     {'prefix': 'cr$', 'model': 'cohere.command-r-plus-v1:0', 'prompt_template': ''},
-    {'prefix': 'm$', 'model': 'mistral.mistral-large-2402-v1:0', 'prompt_template': ''},
+    {'prefix': 'ml$', 'model': 'mistral.mistral-large-2402-v1:0', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'meta.llama3-70b-instruct-v1:0' # For compatibility with the old database format
 
