@@ -186,7 +186,8 @@ def load_photo(h):
 
 async def completion(chat_history, model, chat_id, msg_id): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
-    messages=[{"role": "system", "content": get_prompt(model)}]
+    system_prompt = get_prompt(model)
+    messages=[{"role": "system", "content": system_prompt}] if system_prompt else []
     roles = ["user", "assistant"]
     role_id = 0
     for msg in chat_history:
