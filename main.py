@@ -10,7 +10,8 @@ import base64
 import copy
 from collections import defaultdict
 from richtext import RichText
-import openai
+import aiohttp
+import json
 from telethon import TelegramClient, events, errors, functions, types
 import signal
 
@@ -22,27 +23,14 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': '$$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': '$', 'model': 'gpt-4o-2024-05-13', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Oct 2023. Current Beijing Time: {current_time}'},
-    {'prefix': '4$', 'model': 'gpt-4-turbo-2024-04-09', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Dec 2023. Current Beijing Time: {current_time}'},
-
-    {'prefix': 'gpt-4o-2024-05-13$', 'model': 'gpt-4o-2024-05-13', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Oct 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4o$', 'model': 'gpt-4o', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Oct 2023. Current Beijing Time: {current_time}'},
-
-    {'prefix': 'gpt-4-turbo-2024-04-09$', 'model': 'gpt-4-turbo-2024-04-09', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Dec 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-0125-preview$', 'model': 'gpt-4-0125-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Dec 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-1106-preview$', 'model': 'gpt-4-1106-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-vision-preview$', 'model': 'gpt-4-vision-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-0613$', 'model': 'gpt-4-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-32k-0613$', 'model': 'gpt-4-32k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-
-    {'prefix': 'gpt-3.5-turbo-0125$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-1106$', 'model': 'gpt-3.5-turbo-1106', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-0613$', 'model': 'gpt-3.5-turbo-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-16k-0613$', 'model': 'gpt-3.5-turbo-16k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-0301$', 'model': 'gpt-3.5-turbo-0301', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
+    {'prefix': 'a$', 'model': 'abab6.5-chat', 'prompt_template': ''},
+    {'prefix': 'abab6.5s-chat$', 'model': 'abab6.5s-chat', 'prompt_template': ''},
+    {'prefix': 'abab6.5g-chat$', 'model': 'abab6.5g-chat', 'prompt_template': ''},
+    {'prefix': 'abab6-chat$', 'model': 'abab6-chat', 'prompt_template': ''},
+    {'prefix': 'abab5.5s-chat$', 'model': 'abab5.5s-chat', 'prompt_template': ''},
+    {'prefix': 'abab5.5-chat$', 'model': 'abab5.5-chat', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'gpt-4-0613' # For compatibility with the old database format
+DEFAULT_MODEL = 'abab6.5-chat' # For compatibility with the old database format
 
 def get_prompt(model):
     for m in MODELS:
@@ -50,11 +38,6 @@ def get_prompt(model):
             return m['prompt_template'].replace('{current_time}', (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
     raise ValueError('Model not found')
 
-aclient = openai.AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    max_retries=0,
-    timeout=15,
-)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
@@ -68,6 +51,40 @@ TEXT_FILE_SIZE_LIMIT = 100_000
 
 telegram_last_timestamp = defaultdict(lambda: None)
 telegram_rate_limit_lock = defaultdict(asyncio.Lock)
+
+class MiniMax:
+    def __init__(self, api_key):
+        self.api_key=api_key
+
+    async def create(self, model, messages):
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + self.api_key,
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.minimax.chat/v1/text/chatcompletion_v2",
+                headers=headers,
+                json={
+                    'model': model,
+                    'messages': messages,
+                    'stream': True,
+                    'max_tokens': 2048,
+                }
+            ) as response:
+                if response.status != 200:
+                    content = await response.text()
+                    raise ValueError(f'HTTP status {response.status}: {content}')
+                async for line in response.content:
+                    logging.info('Received line: %r', line)
+                    line = line.decode().rstrip('\n')
+                    if line.startswith('data:'):
+                        data = line[5:]
+                        if data.startswith(' '):
+                            data = data[1:]
+                        yield json.loads(data)
+
+aclient = MiniMax(os.getenv("MINIMAX_API_KEY"))
 
 class PendingReplyManager:
     def __init__(self):
@@ -203,38 +220,28 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, remove_image(messages))
-    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
-    finished = False
+    stream = aclient.create(model=model, messages=messages)
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
-        assert not finished
-        obj = response.choices[0]
-        if obj.delta.role is not None:
-            if obj.delta.role != 'assistant':
+        if 'object' not in response:
+            yield f'\n\n[!] Error: {json.dumps(response, ensure_ascii=False)}'
+            break
+        if response['object'] == 'chat.completion':
+            continue
+        obj = response['choices'][0]
+        if 'role' in obj['delta']:
+            if obj['delta']['role'] != 'assistant':
                 raise ValueError("Role error")
-        if obj.delta.content is not None:
-            yield obj.delta.content
-        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
-            assert all(item is None for item in [
-                obj.delta.content,
-                obj.delta.function_call,
-                obj.delta.role,
-                obj.delta.tool_calls,
-            ])
-            finish_reason = obj.finish_reason
-            if 'finish_details' in obj.model_extra and obj.finish_details is not None:
-                assert finish_reason is None
-                finish_reason = obj.finish_details['type']
+        if 'content' in obj['delta']:
+            yield obj['delta']['content']
+        if 'finish_reason' in obj:
+            finish_reason = obj['finish_reason']
             if finish_reason == 'length':
                 yield '\n\n[!] Error: Output truncated due to limit'
             elif finish_reason == 'stop':
                 pass
-            elif finish_reason is not None:
-                if obj.finish_reason is not None:
-                    yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
-                else:
-                    yield f'\n\n[!] Error: finish_details="{obj.finish_details}"'
-            finished = True
+            else:
+                yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
@@ -507,7 +514,7 @@ async def reply_handler(message):
             except Exception as e:
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, cnt=%r): %s', chat_id, msg_id, error_cnt, e)
-                will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
+                will_retry = error_cnt <= OPENAI_MAX_RETRY
                 error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
                 if will_retry:
                     error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
