@@ -198,7 +198,7 @@ async def create_gpt(message, text):
         return
     gpt_id = hashlib.sha256(text.encode()).hexdigest()[:32]
     db[repr(('gpts', gpt_id))] = text
-    await send_message(message.chat_id, f'创建成功！\n你可以使用 /set 命令来把此 GPT 绑定为本群的 Trigger\n你的 GPT ID: {gpt_id}\n例如：\n/set {gpt_id} translator\n之后可以用 translator$ 这个前缀来使用\n你也可以用 {gpt_id}$ 前缀来直接使用\n请注意：此 GPT ID 在不同群中都可以使用，但每个群要单独绑定 Trigger\n\n你的 system prompt：\n{text}', message.id)
+    await send_message(message.chat_id, f'创建成功！\n你的 GPT ID: {gpt_id}\n\n你可以使用 /set 命令来把此 GPT 绑定为本群的 Trigger\n使用方法：/set [GPT ID] [Trigger] [描述]\n其中描述会被 /list 功能展示，可以为空\n例如：\n/set {gpt_id} translator 这是一个翻译机器人\n\n之后可以用 translator$ 这个前缀来使用\n你也可以用 {gpt_id}$ 前缀来直接使用\n请注意：此 GPT ID 在不同群中都可以使用，但每个群要单独绑定 Trigger\n\n你的 system prompt：\n{text}', message.id)
 
 set_trigger_help_text = '把 GPT 绑定为本群的 Trigger\n使用方法：/set [GPT ID] [Trigger] [描述]\n其中描述会被 /list 功能展示，可以为空\n例如：\n/set 976648131458b1780b2adfb5c48eede6 translator 这是一个翻译机器人\n然后可以用 translator$ 这个前缀来使用对应的 GPT\n注意：Trigger 仅限大小写字母和数字，长度为 2 到 20'
 
