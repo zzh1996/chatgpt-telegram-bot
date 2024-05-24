@@ -22,27 +22,16 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': '$$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': '$', 'model': 'gpt-4o-2024-05-13', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Oct 2023. Current Beijing Time: {current_time}'},
-    {'prefix': '4$', 'model': 'gpt-4-turbo-2024-04-09', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Dec 2023. Current Beijing Time: {current_time}'},
-
-    {'prefix': 'gpt-4o-2024-05-13$', 'model': 'gpt-4o-2024-05-13', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Oct 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4o$', 'model': 'gpt-4o', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Oct 2023. Current Beijing Time: {current_time}'},
-
-    {'prefix': 'gpt-4-turbo-2024-04-09$', 'model': 'gpt-4-turbo-2024-04-09', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Dec 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-0125-preview$', 'model': 'gpt-4-0125-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Dec 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-1106-preview$', 'model': 'gpt-4-1106-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-vision-preview$', 'model': 'gpt-4-vision-preview', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Apr 2023. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-0613$', 'model': 'gpt-4-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-4-32k-0613$', 'model': 'gpt-4-32k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI, based on the GPT-4 architecture. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-
-    {'prefix': 'gpt-3.5-turbo-0125$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-1106$', 'model': 'gpt-3.5-turbo-1106', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-0613$', 'model': 'gpt-3.5-turbo-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-16k-0613$', 'model': 'gpt-3.5-turbo-16k-0613', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
-    {'prefix': 'gpt-3.5-turbo-0301$', 'model': 'gpt-3.5-turbo-0301', 'prompt_template': 'You are ChatGPT Telegram bot. ChatGPT is a large language model trained by OpenAI. Answer as concisely as possible. Knowledge cutoff: Sep 2021. Current Beijing Time: {current_time}'},
+    {'prefix': 'q$', 'model': 'qwen-max-0428', 'prompt_template': ''},
+    {'prefix': 'qwen-max-0403$', 'model': 'qwen-max-0403', 'prompt_template': ''},
+    {'prefix': 'qwen-max-0107$', 'model': 'qwen-max-0107', 'prompt_template': ''},
+    {'prefix': 'qwen-max-longcontext$', 'model': 'qwen-max-longcontext', 'prompt_template': ''},
+    {'prefix': 'qwen-plus$', 'model': 'qwen-plus', 'prompt_template': ''},
+    {'prefix': 'qwen-turbo$', 'model': 'qwen-turbo', 'prompt_template': ''},
+    # {'prefix': 'qwen-vl-max$', 'model': 'qwen-vl-max', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'gpt-4-0613' # For compatibility with the old database format
+DEFAULT_MODEL = 'qwen-max-0428' # For compatibility with the old database format
+VISION_MODEL = 'qwen-vl-max'
 
 def get_prompt(model):
     for m in MODELS:
@@ -51,7 +40,8 @@ def get_prompt(model):
     raise ValueError('Model not found')
 
 aclient = openai.AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
+    base_url='https://dashscope.aliyuncs.com/compatible-mode/v1',
+    api_key=os.getenv("DASHSCOPE_API_KEY"),
     max_retries=0,
     timeout=15,
 )
@@ -213,14 +203,12 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
             if obj.delta.role != 'assistant':
                 raise ValueError("Role error")
         if obj.delta.content is not None:
-            yield obj.delta.content
+            if isinstance(obj.delta.content, list):
+                assert len(obj.delta.content) == 1
+                yield obj.delta.content[0]['text']
+            else:
+                yield obj.delta.content
         if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
-            assert all(item is None for item in [
-                obj.delta.content,
-                obj.delta.function_call,
-                obj.delta.role,
-                obj.delta.tool_calls,
-            ])
             finish_reason = obj.finish_reason
             if 'finish_details' in obj.model_extra and obj.finish_details is not None:
                 assert finish_reason is None
@@ -274,6 +262,8 @@ def construct_chat_history(chat_id, msg_id):
     if len(messages) % 2 != 1:
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
         return None, None
+    if has_image:
+        model = VISION_MODEL
     return messages[::-1], model
 
 @only_admin
@@ -446,6 +436,9 @@ async def reply_handler(message):
     photo_message = message if message.photo is not None else extra_photo_message
     photo_hash = None
     if photo_message is not None:
+        await send_message(chat_id, '[!] Error: Images are not supported now, and will be supported soon', msg_id)
+        return
+
         if photo_message.grouped_id is not None:
             await send_message(chat_id, 'Grouped photos are not yet supported, but will be supported soon', msg_id)
             return
