@@ -21,6 +21,7 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
+    {'prefix': 'cs$$$', 'model': 'claude-3-haiku-20240307'},
     {'prefix': 'cs$$', 'model': 'claude-3-sonnet-20240229'},
     {'prefix': 'cs$', 'model': 'claude-3-opus-20240229'},
 ]
@@ -387,6 +388,8 @@ async def reply_handler(message):
         return
     new_messages = None
     if message.is_reply:
+        if message.reply_to.quote_text is not None:
+            return
         reply_to_message = await message.get_reply_message()
         if reply_to_message.sender_id == bot_id: # user reply to bot message
             reply_to_id = message.reply_to.reply_to_msg_id
