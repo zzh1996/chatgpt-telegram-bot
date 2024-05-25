@@ -34,7 +34,7 @@ def get_prompt(model):
         model = 'glm-4'
     for m in MODELS:
         if m['model'] == model:
-            return m['prompt_template'].replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
+            return m['prompt_template'].replace('{current_time}', (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
     raise ValueError('Model not found')
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -247,6 +247,11 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
         if 'error' in response:
             raise ValueError(json.dumps(response, ensure_ascii=False))
         obj = response['choices'][0]
+        if 'role' in obj['delta']:
+            if obj['delta']['role'] != 'assistant':
+                raise ValueError("Role error")
+        if 'content' in obj['delta']:
+            yield obj['delta']['content']
         if 'finish_reason' in obj:
             finish_reason = obj['finish_reason']
             if finish_reason == 'length':
@@ -256,11 +261,6 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
             else:
                 yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
             finished = True
-        if 'role' in obj['delta']:
-            if obj['delta']['role'] != 'assistant':
-                raise ValueError("Role error")
-        if 'content' in obj['delta']:
-            yield obj['delta']['content']
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
@@ -448,6 +448,8 @@ async def reply_handler(message):
     if not text and message.photo is None and message.document is None: # unknown media types
         return
     if message.is_reply:
+        if message.reply_to.quote_text is not None:
+            return
         reply_to_message = await message.get_reply_message()
         if reply_to_message.sender_id == bot_id: # user reply to bot message
             reply_to_id = message.reply_to.reply_to_msg_id
