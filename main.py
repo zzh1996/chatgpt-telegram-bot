@@ -261,7 +261,7 @@ async def del_whitelist_handler(message):
 async def get_whitelist_handler(message):
     await send_message(message.chat_id, str(get_whitelist()), message.id)
 
-create_gpt_help_text = '创建新的 GPT\n使用方法：/create [system prompt]\n例如：\n/create 你是一个中英翻译机器人，请把用户输入的内容从中文翻译成英文，或者从英文翻译成中文。请不要输出任何额外信息。'
+create_gpt_help_text = '创建新的 GPT\n使用方法：' + RichText.Code('/create [system prompt]') + '\n例如：\n' + RichText.Code('/create 你是一个中英翻译机器人，请把用户输入的内容从中文翻译成英文，或者从英文翻译成中文。请不要输出任何额外信息。')
 
 async def create_gpt(message, text):
     text = text.strip()
@@ -270,9 +270,9 @@ async def create_gpt(message, text):
         return
     gpt_id = hashlib.sha256(text.encode()).hexdigest()[:32]
     db[repr(('gpts', gpt_id))] = text
-    await send_message(message.chat_id, f'创建成功！\n你的 GPT ID: {gpt_id}\n\n你可以使用 /set 命令来把此 GPT 绑定为本群的 Trigger\n使用方法：/set [GPT ID] [Trigger] [描述]\n其中描述会被 /list 功能展示，可以为空\n例如：\n/set {gpt_id} translator 这是一个翻译机器人\n\n之后可以用 translator$ 这个前缀来使用\n你也可以用 {gpt_id}$ 前缀来直接使用\n请注意：此 GPT ID 在不同群中都可以使用，但每个群要单独绑定 Trigger\n\n你的 system prompt：\n{text}', message.id)
+    await send_message(message.chat_id, '创建成功！\n你的 GPT ID: ' + RichText.Code(gpt_id) + '\n\n你可以使用 /set 命令来把此 GPT 绑定为本群的 Trigger\n使用方法：\n' + RichText.Pre('/set [GPT ID] [Trigger] [描述]', 'plaintext') + '\n其中描述会被 /list 功能展示，可以为空\n例如：\n' + RichText.Pre(f'/set {gpt_id} translator 这是一个翻译机器人', 'plaintext') + '\n\n之后可以用 ' + RichText.Code('translator$') + ' 这个前缀来使用\n你也可以用 ' + RichText.Code(f'{gpt_id}$') + ' 前缀来直接使用\n请注意：此 GPT ID 在不同群中都可以使用，但每个群要单独绑定 Trigger\n\n你的 system prompt：\n' + RichText.Pre(text, 'plaintext'), message.id)
 
-set_trigger_help_text = '把 GPT 绑定为本群的 Trigger\n使用方法：/set [GPT ID] [Trigger] [描述]\n其中描述会被 /list 功能展示，可以为空\n例如：\n/set 976648131458b1780b2adfb5c48eede6 translator 这是一个翻译机器人\n然后可以用 translator$ 这个前缀来使用对应的 GPT\n注意：Trigger 仅限大小写字母和数字，长度为 2 到 20'
+set_trigger_help_text = '把 GPT 绑定为本群的 Trigger\n使用方法：' + RichText.Code('/set [GPT ID] [Trigger] [描述]') + '\n其中描述会被 /list 功能展示，可以为空\n例如：\n' + RichText.Code('/set 976648131458b1780b2adfb5c48eede6 translator 这是一个翻译机器人') + '\n然后可以用 ' + RichText.Code('translator$') + ' 这个前缀来使用对应的 GPT\n注意：Trigger 仅限大小写字母和数字，长度为 2 到 20'
 
 @only_whitelist
 async def set_trigger(message, text):
@@ -287,7 +287,7 @@ async def set_trigger(message, text):
         if trigger.endswith('$'):
             trigger = trigger[:-1]
         if repr(('gpts', gpt_id)) not in db:
-            await send_message(message.chat_id, f'GPT ID "{gpt_id}" 不存在', message.id)
+            await send_message(message.chat_id, 'GPT ID "' + RichText.Code(gpt_id) + '" 不存在', message.id)
             return
         charset = string.ascii_letters + string.digits
         if not all(c in charset for c in trigger) or len(trigger) not in range(2, 21):
@@ -300,18 +300,18 @@ async def set_trigger(message, text):
         for i, (author, _, trigger_, _) in enumerate(group_triggers):
             if trigger_ == trigger: # 已存在
                 if author != message.sender_id and message.sender_id != ADMIN_ID:
-                    await send_message(message.chat_id, f'这个 Trigger 被别人（uid={author}）占用了，你可以让 TA 删除或者找管理员删除', message.id)
+                    await send_message(message.chat_id, '这个 Trigger 被别人（uid=' + RichText.Code(str(author)) + '）占用了，你可以让 TA 删除或者找管理员删除', message.id)
                     return
                 group_triggers[i] = (message.sender_id, gpt_id, trigger, description)
                 break
         else:
             group_triggers.append((message.sender_id, gpt_id, trigger, description))
         db[repr(('gpts_triggers', message.chat_id))] = group_triggers
-        await send_message(message.chat_id, f'Trigger 已设置！\n从现在起，在本群中你可以使用 {trigger}$ 开头的消息来使用这个 GPT\nTrigger: {trigger}\nGPT ID：{gpt_id}\n描述：{description}', message.id)
+        await send_message(message.chat_id, 'Trigger 已设置！\n从现在起，在本群中你可以使用 ' + RichText.Code(f'{trigger}$') + ' 开头的消息来使用这个 GPT\nTrigger: ' + RichText.Code(trigger) + '\nGPT ID：' + RichText.Code(gpt_id) + '\n描述：' + RichText.Code(description), message.id)
         return
     await send_message(message.chat_id, set_trigger_help_text, message.id)
 
-del_trigger_help_text = '删除本群的 Trigger\n使用方法：/unset [Trigger]\n例如：\n/unset translator'
+del_trigger_help_text = '删除本群的 Trigger\n使用方法：' + RichText.Code('/unset [Trigger]') + '\n例如：\n' + RichText.Code('/unset translator')
 
 @only_whitelist
 async def del_trigger(message, text):
@@ -326,14 +326,14 @@ async def del_trigger(message, text):
         for i, (author, _, trigger_, _) in enumerate(group_triggers):
             if trigger_ == trigger:
                 if author != message.sender_id and message.sender_id != ADMIN_ID:
-                    await send_message(message.chat_id, f'你无权删除这个 Trigger，你可以让拥有者（uid={author}）删除或者找管理员删除', message.id)
+                    await send_message(message.chat_id, '你无权删除这个 Trigger，你可以让拥有者（uid=' + RichText.Code(str(author)) + '）删除或者找管理员删除', message.id)
                     return
                 del group_triggers[i]
                 db[repr(('gpts_triggers', message.chat_id))] = group_triggers
-                await send_message(message.chat_id, f'Trigger {trigger} 已删除！', message.id)
+                await send_message(message.chat_id, f'Trigger ' + RichText.Code(trigger) + ' 已删除！', message.id)
                 return
         else:
-            await send_message(message.chat_id, f'本群根本不存在 "{trigger}" 这个 Trigger！', message.id)
+            await send_message(message.chat_id, f'本群根本不存在 "' + RichText.Code(trigger) + '" 这个 Trigger！', message.id)
             return
     await send_message(message.chat_id, del_trigger_help_text, message.id)
 
@@ -350,7 +350,7 @@ async def list_trigger(message):
         return
     text = '本群的 Trigger 列表：\n\n'
     for _, _, trigger, description in group_triggers:
-        text += f'[{trigger}] {description}\n'
+        text += '[' + RichText.Code(trigger) + f'] {description}\n'
     async with BotReplyMessages(message.chat_id, message.id, '') as b:
         await b.update(text)
         await b.finalize()
@@ -368,7 +368,7 @@ async def list_trigger_full(message):
         return
     text = '本群的 Trigger 列表：\n\n'
     for author, gpt_id, trigger, description in group_triggers:
-        text += f'Trigger: {trigger}\nGPT ID: {gpt_id}\n添加人：uid={author}\n描述：{description}\n\n'
+        text += 'Trigger: ' + RichText.Code(trigger) + '\nGPT ID: ' + RichText.Code(gpt_id) + '\n添加人：uid=' + RichText.Code(str(author)) + f'\n描述：{description}\n\n'
     async with BotReplyMessages(message.chat_id, message.id, '') as b:
         await b.update(text)
         await b.finalize()
@@ -619,7 +619,9 @@ async def ping(message):
     await send_message(message.chat_id, f'chat_id={message.chat_id} user_id={message.sender_id} is_whitelisted={is_whitelist(message.chat_id)}', message.id)
 
 async def help(message):
-    help_message = '\n\n'.join([create_gpt_help_text, set_trigger_help_text, del_trigger_help_text, list_trigger_help_text, list_trigger_full_help_text])
+    help_message = ''
+    for m in [create_gpt_help_text, set_trigger_help_text, del_trigger_help_text, list_trigger_help_text, list_trigger_full_help_text]:
+        help_message += m + '\n\n'
     await send_message(message.chat_id, help_message, message.id)
 
 async def main():
@@ -696,9 +698,9 @@ async def main():
                     ('add_whitelist', 'Add this group to whitelist (only admin)'),
                     ('del_whitelist', 'Delete this group from whitelist (only admin)'),
                     ('get_whitelist', 'List groups in whitelist (only admin)'),
-                    ('create', 'Create a new GPT'),
-                    ('set', 'Bind a GPT ID to a Trigger for this group'),
-                    ('unset', 'Delete a Trigger for this group'),
+                    ('create', 'Create a new GPT. Usage: /create [system prompt]'),
+                    ('set', 'Bind a GPT ID to a Trigger for this group. Usage: /set [GPT ID] [Trigger] [Description]'),
+                    ('unset', 'Delete a Trigger for this group. Usage: /unset [Trigger]'),
                     ('list', 'List Triggers in this group'),
                     ('list_full', 'List Triggers in this group (full)'),
                     ('help', 'Show help message'),
