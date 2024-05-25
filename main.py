@@ -3,19 +3,31 @@ import os
 import logging
 import shelve
 import time
-import json
 import traceback
 import hashlib
 import string
+import base64
+import copy
 from collections import defaultdict
+from richtext import RichText
 import openai
 from telethon import TelegramClient, events, errors, functions, types
+import signal
+
+def debug_signal_handler(signal, frame):
+    breakpoint()
+
+signal.signal(signal.SIGUSR1, debug_signal_handler)
 
 ADMIN_ID = 71863318
 
 MODEL = 'gpt-4o'
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+aclient = openai.AsyncOpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    max_retries=0,
+    timeout=15,
+)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
@@ -25,6 +37,7 @@ TELEGRAM_MIN_INTERVAL = 3
 OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
+TEXT_FILE_SIZE_LIMIT = 100_000
 
 telegram_last_timestamp = defaultdict(lambda: None)
 telegram_rate_limit_lock = defaultdict(asyncio.Lock)
@@ -128,26 +141,70 @@ def only_whitelist(func):
         await func(message, *args)
     return new_func
 
+def save_photo(photo_blob): # TODO: change to async
+    h = hashlib.sha256(photo_blob).hexdigest()
+    dir = f'photos/{h[:2]}/{h[2:4]}'
+    path = f'{dir}/{h}'
+    if not os.path.isfile(path):
+        os.makedirs(dir, exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(photo_blob)
+    return h
+
+def load_photo(h):
+    dir = f'photos/{h[:2]}/{h[2:4]}'
+    path = f'{dir}/{h}'
+    with open(path, 'rb') as f:
+        return f.read()
+
 async def completion(messages, chat_id, msg_id):
-    logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, messages)
-    stream = await openai.ChatCompletion.acreate(model=MODEL, messages=messages, stream=True, request_timeout=15)
+    def remove_image(messages):
+        new_messages = copy.deepcopy(messages)
+        for message in new_messages:
+            if 'content' in message:
+                if isinstance(message['content'], list):
+                    for obj in message['content']:
+                        if obj['type'] == 'image_url':
+                            obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
+        return new_messages
+    logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, remove_image(messages))
+    stream = await aclient.chat.completions.create(model=MODEL, messages=messages, stream=True)
+    finished = False
     async for response in stream:
-        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, json.dumps(response, ensure_ascii=False))
-        obj = response['choices'][0]
-        if obj['finish_reason'] is not None:
-            assert not obj['delta']
-            if obj['finish_reason'] == 'length':
-                yield ' [!Output truncated due to limit]'
-            return
-        if 'role' in obj['delta']:
-            if obj['delta']['role'] != 'assistant':
+        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
+        assert not finished
+        obj = response.choices[0]
+        if obj.delta.role is not None:
+            if obj.delta.role != 'assistant':
                 raise ValueError("Role error")
-        if 'content' in obj['delta']:
-            yield obj['delta']['content']
+        if obj.delta.content is not None:
+            yield obj.delta.content
+        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
+            assert all(item is None for item in [
+                obj.delta.content,
+                obj.delta.function_call,
+                obj.delta.role,
+                obj.delta.tool_calls,
+            ])
+            finish_reason = obj.finish_reason
+            if 'finish_details' in obj.model_extra and obj.finish_details is not None:
+                assert finish_reason is None
+                finish_reason = obj.finish_details['type']
+            if finish_reason == 'length':
+                yield '\n\n[!] Error: Output truncated due to limit'
+            elif finish_reason == 'stop':
+                pass
+            elif finish_reason is not None:
+                if obj.finish_reason is not None:
+                    yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
+                else:
+                    yield f'\n\n[!] Error: finish_details="{obj.finish_details}"'
+            finished = True
 
 def construct_chat_history(chat_id, msg_id):
     trigger, gpt_id = None, None
     messages = []
+    has_image = False
     while True:
         key = repr((chat_id, msg_id))
         if key not in db:
@@ -159,7 +216,22 @@ def construct_chat_history(chat_id, msg_id):
             if 'gpt' in i:
                 trigger, gpt_id = i['gpt']
             else:
-                new_messages.append(i)
+                if isinstance(i['content'], list):
+                    new_message = []
+                    for obj in i['content']:
+                        if obj['type'] == 'text':
+                            new_message.append(obj)
+                        elif obj['type'] == 'image':
+                            blob = load_photo(obj['hash'])
+                            blob_base64 = base64.b64encode(blob).decode()
+                            image_url = 'data:image/jpeg;base64,' + blob_base64
+                            new_message.append({'type': 'image_url', 'image_url': {'url': image_url, 'detail': 'high'}})
+                            has_image = True
+                        else:
+                            raise ValueError('Unknown message type in chat history')
+                    new_messages.append({'role': i['role'], 'content': new_message})
+                else:
+                    new_messages.append(i)
         messages = new_messages + messages
         if reply_id is None:
             break
@@ -305,11 +377,14 @@ async def list_trigger_full(message):
 @ensure_interval()
 async def send_message(chat_id, text, reply_to_message_id):
     logging.info('Sending message: chat_id=%r, reply_to_message_id=%r, text=%r', chat_id, reply_to_message_id, text)
+    text = RichText(text)
+    text, entities = text.to_telegram()
     msg = await bot.send_message(
         chat_id,
         text,
         reply_to=reply_to_message_id,
         link_preview=False,
+        formatting_entities=entities,
     )
     logging.info('Message sent: chat_id=%r, reply_to_message_id=%r, message_id=%r', chat_id, reply_to_message_id, msg.id)
     return msg.id
@@ -318,12 +393,15 @@ async def send_message(chat_id, text, reply_to_message_id):
 @ensure_interval()
 async def edit_message(chat_id, text, message_id):
     logging.info('Editing message: chat_id=%r, message_id=%r, text=%r', chat_id, message_id, text)
+    text = RichText(text)
+    text, entities = text.to_telegram()
     try:
         await bot.edit_message(
             chat_id,
             message_id,
             text,
             link_preview=False,
+            formatting_entities=entities,
         )
     except errors.MessageNotModifiedError as e:
         logging.info('Message not modified: chat_id=%r, message_id=%r', chat_id, message_id)
@@ -403,18 +481,27 @@ async def reply_handler(message):
     sender_id = message.sender_id
     msg_id = message.id
     text = message.message
-    logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r', chat_id, sender_id, msg_id, text)
+    logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r, photo=%s, document=%s', chat_id, sender_id, msg_id, text, message.photo, message.document)
     reply_to_id = None
     msgs = []
+    extra_photo_message = None
+    extra_document_message = None
+    if not text and message.photo is None and message.document is None: # unknown media types
+        return
     if message.is_reply:
+        if message.reply_to.quote_text is not None:
+            return
         reply_to_message = await message.get_reply_message()
         if reply_to_message.sender_id == bot_id: # user reply to bot message
             reply_to_id = message.reply_to.reply_to_msg_id
             await pending_reply_manager.wait_for((chat_id, reply_to_id))
-            msgs.append({"role": "user", "content": text})
-        else: # user reply to user message
+        elif reply_to_message.photo is not None: # user reply to a photo
+            extra_photo_message = reply_to_message
+        elif reply_to_message.document is not None: # user reply to a document
+            extra_document_message = reply_to_message
+        else:
             return
-    else: # new message
+    if not message.is_reply or extra_photo_message is not None or extra_document_message is not None: # new message
         splits = text.split('$', 1)
         if len(splits) != 2:
             return
@@ -435,8 +522,44 @@ async def reply_handler(message):
         system_prompt = db[repr(('gpts', gpt_id))]
         msgs.append({"gpt": (trigger, gpt_id)})
         msgs.append({"role": "system", "content": system_prompt})
-        msgs.append({"role": "user", "content": text})
 
+    photo_message = message if message.photo is not None else extra_photo_message
+    photo_hash = None
+    if photo_message is not None:
+        if photo_message.grouped_id is not None:
+            await send_message(chat_id, 'Grouped photos are not yet supported, but will be supported soon', msg_id)
+            return
+        photo_blob = await photo_message.download_media(bytes)
+        photo_hash = save_photo(photo_blob)
+
+    document_message = message if message.document is not None else extra_document_message
+    document_text = None
+    if document_message is not None:
+        if document_message.grouped_id is not None:
+            await send_message(chat_id, 'Grouped files are not yet supported, but will be supported soon', msg_id)
+            return
+        if document_message.document.size > TEXT_FILE_SIZE_LIMIT:
+            await send_message(chat_id, 'File too large', msg_id)
+            return
+        document_blob = await document_message.download_media(bytes)
+        try:
+            document_text = document_blob.decode()
+            assert all(c != '\x00' for c in document_text)
+        except:
+            await send_message(chat_id, 'File is not text file or not valid UTF-8', msg_id)
+            return
+
+    if photo_hash:
+        new_message = [{'type': 'text', 'text': text}, {'type': 'image', 'hash': photo_hash}]
+    elif document_text:
+        if text:
+            new_message = document_text + '\n\n' + text
+        else:
+            new_message = document_text
+    else:
+        new_message = text
+
+    msgs.append({"role": "user", "content": new_message})
     db[repr((chat_id, msg_id))] = (msgs, reply_to_id)
 
     chat_history, t = construct_chat_history(chat_id, msg_id)
@@ -471,8 +594,8 @@ async def reply_handler(message):
                     if first_update_timestamp is None:
                         first_update_timestamp = time.time()
                     if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
-                        await replymsgs.update(reply + ' [!Generating...]')
-                await replymsgs.update(reply)
+                        await replymsgs.update(RichText.from_markdown(reply) + ' [!Generating...]')
+                await replymsgs.update(RichText.from_markdown(reply))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
                     db[repr((chat_id, message_id))] = [{"role": "assistant", "content": reply}], msg_id
@@ -480,7 +603,7 @@ async def reply_handler(message):
             except Exception as e:
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, cnt=%r): %s', chat_id, msg_id, error_cnt, e)
-                will_retry = not isinstance (e, openai.InvalidRequestError) and error_cnt <= OPENAI_MAX_RETRY
+                will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
                 error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
                 if will_retry:
                     error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'

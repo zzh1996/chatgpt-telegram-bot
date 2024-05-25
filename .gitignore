@@ -9,3 +9,6 @@ __pycache__
 temp/
 chatlogs/
 docker-compose-prod.yml
+photos/
+db.db
+bot.session-journal
