@@ -8,6 +8,11 @@ services:
         command: python main.py
         working_dir: /bot
         restart: always
+        stdin_open: true
+        tty: true
+        init: true
         environment:
           - OPENAI_API_KEY=
           - TELEGRAM_BOT_TOKEN=
+          - TELEGRAM_API_ID=
+          - TELEGRAM_API_HASH=

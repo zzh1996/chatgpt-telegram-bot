@@ -2,51 +2,64 @@ import asyncio
 import os
 import logging
 import shelve
-import datetime
 import time
-import json
 import traceback
+import hashlib
+import base64
+import copy
+from collections import defaultdict
+from richtext import RichText
 import openai
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from telegram.error import RetryAfter, NetworkError, BadRequest
+from telethon import TelegramClient, events, errors, functions, types
+import signal
+
+def debug_signal_handler(signal, frame):
+    breakpoint()
+
+signal.signal(signal.SIGUSR1, debug_signal_handler)
 
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': '$$', 'model': 'gpt-3.5-turbo-0125'},
-    {'prefix': '$', 'model': 'gpt-4o-2024-05-13'},
-    {'prefix': '4$', 'model': 'gpt-4-turbo-2024-04-09'},
+    {'prefix': 's$$', 'model': 'gpt-3.5-turbo-0125'},
+    {'prefix': 's$', 'model': 'gpt-4o-2024-05-13'},
+    {'prefix': 's4$', 'model': 'gpt-4-turbo-2024-04-09'},
 
-    {'prefix': 'gpt-4o-2024-05-13$', 'model': 'gpt-4o-2024-05-13'},
-    {'prefix': 'gpt-4o$', 'model': 'gpt-4o'},
+    {'prefix': 'sgpt-4o-2024-05-13$', 'model': 'gpt-4o-2024-05-13'},
+    {'prefix': 'sgpt-4o$', 'model': 'gpt-4o'},
 
-    {'prefix': 'gpt-4-turbo-2024-04-09$', 'model': 'gpt-4-turbo-2024-04-09'},
-    {'prefix': 'gpt-4-0125-preview$', 'model': 'gpt-4-0125-preview'},
-    {'prefix': 'gpt-4-1106-preview$', 'model': 'gpt-4-1106-preview'},
-    {'prefix': 'gpt-4-vision-preview$', 'model': 'gpt-4-vision-preview'},
-    {'prefix': 'gpt-4-0613$', 'model': 'gpt-4-0613'},
-    {'prefix': 'gpt-4-32k-0613$', 'model': 'gpt-4-32k-0613'},
+    {'prefix': 'sgpt-4-turbo-2024-04-09$', 'model': 'gpt-4-turbo-2024-04-09'},
+    {'prefix': 'sgpt-4-0125-preview$', 'model': 'gpt-4-0125-preview'},
+    {'prefix': 'sgpt-4-1106-preview$', 'model': 'gpt-4-1106-preview'},
+    {'prefix': 'sgpt-4-vision-preview$', 'model': 'gpt-4-vision-preview'},
+    {'prefix': 'sgpt-4-0613$', 'model': 'gpt-4-0613'},
+    {'prefix': 'sgpt-4-32k-0613$', 'model': 'gpt-4-32k-0613'},
 
-    {'prefix': 'gpt-3.5-turbo-0125$', 'model': 'gpt-3.5-turbo-0125'},
-    {'prefix': 'gpt-3.5-turbo-1106$', 'model': 'gpt-3.5-turbo-1106'},
-    {'prefix': 'gpt-3.5-turbo-0613$', 'model': 'gpt-3.5-turbo-0613'},
-    {'prefix': 'gpt-3.5-turbo-16k-0613$', 'model': 'gpt-3.5-turbo-16k-0613'},
-    {'prefix': 'gpt-3.5-turbo-0301$', 'model': 'gpt-3.5-turbo-0301'},
+    {'prefix': 'sgpt-3.5-turbo-0125$', 'model': 'gpt-3.5-turbo-0125'},
+    {'prefix': 'sgpt-3.5-turbo-1106$', 'model': 'gpt-3.5-turbo-1106'},
+    {'prefix': 'sgpt-3.5-turbo-0613$', 'model': 'gpt-3.5-turbo-0613'},
+    {'prefix': 'sgpt-3.5-turbo-16k-0613$', 'model': 'gpt-3.5-turbo-16k-0613'},
+    {'prefix': 'sgpt-3.5-turbo-0301$', 'model': 'gpt-3.5-turbo-0301'},
 ]
-DEFAULT_MODEL = "gpt-4o"
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+aclient = openai.AsyncOpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    max_retries=0,
+    timeout=15,
+)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
+TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
 
 TELEGRAM_LENGTH_LIMIT = 4096
 TELEGRAM_MIN_INTERVAL = 3
 OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
+TEXT_FILE_SIZE_LIMIT = 100_000
 
-telegram_last_timestamp = None
-telegram_rate_limit_lock = asyncio.Lock()
+telegram_last_timestamp = defaultdict(lambda: None)
+telegram_rate_limit_lock = defaultdict(asyncio.Lock)
 
 class PendingReplyManager:
     def __init__(self):
@@ -69,24 +82,25 @@ class PendingReplyManager:
         await self.messages[reply_id].wait()
         logging.info('PendingReplyManager waiting for %r finished', reply_id)
 
-def within_interval():
+def within_interval(chat_id):
     global telegram_last_timestamp
-    if telegram_last_timestamp is None:
+    if telegram_last_timestamp[chat_id] is None:
         return False
-    remaining_time = telegram_last_timestamp + TELEGRAM_MIN_INTERVAL - time.time()
+    remaining_time = telegram_last_timestamp[chat_id] + TELEGRAM_MIN_INTERVAL - time.time()
     return remaining_time > 0
 
 def ensure_interval(interval=TELEGRAM_MIN_INTERVAL):
     def decorator(func):
         async def new_func(*args, **kwargs):
-            async with telegram_rate_limit_lock:
+            chat_id = args[0]
+            async with telegram_rate_limit_lock[chat_id]:
                 global telegram_last_timestamp
-                if telegram_last_timestamp is not None:
-                    remaining_time = telegram_last_timestamp + interval - time.time()
+                if telegram_last_timestamp[chat_id] is not None:
+                    remaining_time = telegram_last_timestamp[chat_id] + interval - time.time()
                     if remaining_time > 0:
                         await asyncio.sleep(remaining_time)
                 result = await func(*args, **kwargs)
-                telegram_last_timestamp = time.time()
+                telegram_last_timestamp[chat_id] = time.time()
                 return result
         return new_func
     return decorator
@@ -97,9 +111,7 @@ def retry(max_retry=30, interval=10):
             for _ in range(max_retry - 1):
                 try:
                     return await func(*args, **kwargs)
-                except (RetryAfter, NetworkError) as e:
-                    if isinstance(e, BadRequest):
-                        raise
+                except errors.FloodWaitError as e:
                     logging.exception(e)
                     await asyncio.sleep(interval)
             return await func(*args, **kwargs)
@@ -124,52 +136,89 @@ def get_whitelist():
     return db['whitelist']
 
 def only_admin(func):
-    async def new_func(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.message is None:
+    async def new_func(message):
+        if message.sender_id != ADMIN_ID:
+            await send_message(message.chat_id, 'Only admin can use this command', message.id)
             return
-        if update.message.from_user.id != ADMIN_ID:
-            await send_message(update.effective_chat.id, 'Only admin can use this command', update.message.message_id)
-            return
-        await func(update, context)
+        await func(message)
     return new_func
 
 def only_private(func):
-    async def new_func(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.message is None:
+    async def new_func(message):
+        if message.chat_id != message.sender_id:
+            await send_message(message.chat_id, 'This command only works in private chat', message.id)
             return
-        if update.effective_chat.id != update.message.from_user.id:
-            await send_message(update.effective_chat.id, 'This command only works in private chat', update.message.message_id)
-            return
-        await func(update, context)
+        await func(message)
     return new_func
 
 def only_whitelist(func):
-    async def new_func(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.message is None:
+    async def new_func(message):
+        if not is_whitelist(message.chat_id):
+            if message.chat_id == message.sender_id:
+                await send_message(message.chat_id, 'This chat is not in whitelist', message.id)
             return
-        if not is_whitelist(update.effective_chat.id):
-            if update.effective_chat.id == update.message.from_user.id:
-                await send_message(update.effective_chat.id, 'This chat is not in whitelist', update.message.message_id)
-            return
-        await func(update, context)
+        await func(message)
     return new_func
 
+def save_photo(photo_blob): # TODO: change to async
+    h = hashlib.sha256(photo_blob).hexdigest()
+    dir = f'photos/{h[:2]}/{h[2:4]}'
+    path = f'{dir}/{h}'
+    if not os.path.isfile(path):
+        os.makedirs(dir, exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(photo_blob)
+    return h
+
+def load_photo(h):
+    dir = f'photos/{h[:2]}/{h[2:4]}'
+    path = f'{dir}/{h}'
+    with open(path, 'rb') as f:
+        return f.read()
+
 async def completion(messages, model, chat_id, msg_id):
-    logging.info('Request (chat_id=%r, msg_id=%r, model=%r): %s', chat_id, msg_id, model, messages)
-    stream = await openai.ChatCompletion.acreate(model=model, messages=messages, stream=True, request_timeout=15)
+    def remove_image(messages):
+        new_messages = copy.deepcopy(messages)
+        for message in new_messages:
+            if 'content' in message:
+                if isinstance(message['content'], list):
+                    for obj in message['content']:
+                        if obj['type'] == 'image_url':
+                            obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
+        return new_messages
+    logging.info('Request (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, remove_image(messages))
+    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
+    finished = False
     async for response in stream:
-        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, json.dumps(response, ensure_ascii=False))
-        obj = response['choices'][0]
-        if obj['finish_reason'] is not None:
-            assert not obj['delta']
-            if obj['finish_reason'] == 'length':
-                yield ' [!Output truncated due to limit]'
-            return
-        if 'role' in obj['delta']:
-            if obj['delta']['role'] != 'assistant':
+        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
+        assert not finished
+        obj = response.choices[0]
+        if obj.delta.role is not None:
+            if obj.delta.role != 'assistant':
                 raise ValueError("Role error")
-        if 'content' in obj['delta']:
-            yield obj['delta']['content']
+        if obj.delta.content is not None:
+            yield obj.delta.content
+        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
+            assert all(item is None for item in [
+                obj.delta.content,
+                obj.delta.function_call,
+                obj.delta.role,
+                obj.delta.tool_calls,
+            ])
+            finish_reason = obj.finish_reason
+            if 'finish_details' in obj.model_extra and obj.finish_details is not None:
+                assert finish_reason is None
+                finish_reason = obj.finish_details['type']
+            if finish_reason == 'length':
+                yield '\n\n[!] Error: Output truncated due to limit'
+            elif finish_reason == 'stop':
+                pass
+            elif finish_reason is not None:
+                if obj.finish_reason is not None:
+                    yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
+                else:
+                    yield f'\n\n[!] Error: finish_details="{obj.finish_details}"'
+            finished = True
 
 def construct_chat_history(chat_id, msg_id):
     model = None
@@ -185,65 +234,89 @@ def construct_chat_history(chat_id, msg_id):
             if "model" in i:
                 model = i["model"]
             else:
-                new_messages.append(i)
+                message = i['content']
+                if isinstance(message, list):
+                    new_message = []
+                    for obj in message:
+                        if obj['type'] == 'text':
+                            new_message.append(obj)
+                        elif obj['type'] == 'image':
+                            blob = load_photo(obj['hash'])
+                            blob_base64 = base64.b64encode(blob).decode()
+                            image_url = 'data:image/jpeg;base64,' + blob_base64
+                            new_message.append({'type': 'image_url', 'image_url': {'url': image_url, 'detail': 'high'}})
+                        else:
+                            raise ValueError('Unknown message type in chat history')
+                    message = new_message
+                new_messages.append({"role": i["role"], "content": message})
         messages = new_messages + messages
         if reply_id is None:
             break
         msg_id = reply_id
     if model is None:
-        return None, None
+        return None, None, None
     return messages, model
 
 @only_admin
-async def add_whitelist_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_whitelist(update.effective_chat.id):
-        await send_message(update.effective_chat.id, 'Already in whitelist', update.message.message_id)
+async def add_whitelist_handler(message):
+    if is_whitelist(message.chat_id):
+        await send_message(message.chat_id, 'Already in whitelist', message.id)
         return
-    add_whitelist(update.effective_chat.id)
-    await send_message(update.effective_chat.id, 'Whitelist added', update.message.message_id)
+    add_whitelist(message.chat_id)
+    await send_message(message.chat_id, 'Whitelist added', message.id)
 
 @only_admin
-async def del_whitelist_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_whitelist(update.effective_chat.id):
-        await send_message(update.effective_chat.id, 'Not in whitelist', update.message.message_id)
+async def del_whitelist_handler(message):
+    if not is_whitelist(message.chat_id):
+        await send_message(message.chat_id, 'Not in whitelist', message.id)
         return
-    del_whitelist(update.effective_chat.id)
-    await send_message(update.effective_chat.id, 'Whitelist deleted', update.message.message_id)
+    del_whitelist(message.chat_id)
+    await send_message(message.chat_id, 'Whitelist deleted', message.id)
 
 @only_admin
 @only_private
-async def get_whitelist_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_message(update.effective_chat.id, str(get_whitelist()), update.message.message_id)
+async def get_whitelist_handler(message):
+    await send_message(message.chat_id, str(get_whitelist()), message.id)
+
+@only_whitelist
+async def list_models_handler(message):
+    text = ''
+    for m in MODELS:
+        text += f'Prefix: "{m["prefix"]}", model: {m["model"]}\n'
+    await send_message(message.chat_id, text, message.id)
 
 @retry()
 @ensure_interval()
 async def send_message(chat_id, text, reply_to_message_id):
     logging.info('Sending message: chat_id=%r, reply_to_message_id=%r, text=%r', chat_id, reply_to_message_id, text)
-    msg = await application.bot.send_message(
+    text = RichText(text)
+    text, entities = text.to_telegram()
+    msg = await bot.send_message(
         chat_id,
         text,
-        reply_to_message_id=reply_to_message_id,
-        disable_web_page_preview=True,
+        reply_to=reply_to_message_id,
+        link_preview=False,
+        formatting_entities=entities,
     )
-    logging.info('Message sent: chat_id=%r, reply_to_message_id=%r, message_id=%r', chat_id, reply_to_message_id, msg.message_id)
-    return msg.message_id
+    logging.info('Message sent: chat_id=%r, reply_to_message_id=%r, message_id=%r', chat_id, reply_to_message_id, msg.id)
+    return msg.id
 
 @retry()
 @ensure_interval()
 async def edit_message(chat_id, text, message_id):
     logging.info('Editing message: chat_id=%r, message_id=%r, text=%r', chat_id, message_id, text)
+    text = RichText(text)
+    text, entities = text.to_telegram()
     try:
-        await application.bot.edit_message_text(
+        await bot.edit_message(
+            chat_id,
+            message_id,
             text,
-            chat_id=chat_id,
-            message_id=message_id,
-            disable_web_page_preview=True,
+            link_preview=False,
+            formatting_entities=entities,
         )
-    except BadRequest as e:
-        if e.message == 'Message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message':
-            logging.info('Message not modified: chat_id=%r, message_id=%r', chat_id, message_id)
-        else:
-            raise
+    except errors.MessageNotModifiedError as e:
+        logging.info('Message not modified: chat_id=%r, message_id=%r', chat_id, message_id)
     else:
         logging.info('Message edited: chat_id=%r, message_id=%r', chat_id, message_id)
 
@@ -251,18 +324,11 @@ async def edit_message(chat_id, text, message_id):
 @ensure_interval()
 async def delete_message(chat_id, message_id):
     logging.info('Deleting message: chat_id=%r, message_id=%r', chat_id, message_id)
-    try:
-        await application.bot.delete_message(
-            chat_id,
-            message_id,
-        )
-    except BadRequest as e:
-        if e.message == 'Message to delete not found':
-            logging.info('Message to delete not found: chat_id=%r, message_id=%r', chat_id, message_id)
-        else:
-            raise
-    else:
-        logging.info('Message deleted: chat_id=%r, message_id=%r', chat_id, message_id)
+    await bot.delete_messages(
+        chat_id,
+        message_id,
+    )
+    logging.info('Message deleted: chat_id=%r, message_id=%r', chat_id, message_id)
 
 class BotReplyMessages:
     def __init__(self, chat_id, orig_msg_id, prefix):
@@ -315,49 +381,66 @@ class BotReplyMessages:
 
     async def update(self, text):
         self.text = text
-        if not within_interval():
+        if not within_interval(self.chat_id):
             await self._force_update(self.text)
 
     async def finalize(self):
         await self._force_update(self.text)
 
 @only_whitelist
-async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    sender_id = update.message.from_user.id
-    msg_id = update.message.message_id
-    text = update.message.text
-    logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r', chat_id, sender_id, msg_id, text)
-    reply_to_message = update.message.reply_to_message
-    if reply_to_message is not None and update.message.reply_to_message.from_user.id == bot_id: # user reply to bot message
-        reply_to_id = reply_to_message.message_id
-        await pending_reply_manager.wait_for((chat_id, reply_to_id))
-        msgs = []
-        splits = text.split('$$$')
-        if len(splits) % 2 == 0:
-            await send_message(update.effective_chat.id, 'Usage: user$$$assistant$$$...$$$user', update.message.message_id)
+async def reply_handler(message):
+    chat_id = message.chat_id
+    sender_id = message.sender_id
+    msg_id = message.id
+    text = message.message
+    logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r, photo=%s, document=%s', chat_id, sender_id, msg_id, text, message.photo, message.document)
+    reply_to_id = None
+    extra_photo_message = None
+    extra_document_message = None
+    if not text and message.photo is None and message.document is None: # unknown media types
+        return
+    new_messages = None
+    if message.is_reply:
+        if message.reply_to.quote_text is not None:
             return
-        for i, text in enumerate(splits):
-            if i % 2 == 0:
-                role = 'user'
-            else:
-                role = 'assistant'
-            msgs.append({"role": role, "content": text})
-        db[repr((chat_id, msg_id))] = msgs, reply_to_id
-    else:
+        reply_to_message = await message.get_reply_message()
+        if reply_to_message.sender_id == bot_id: # user reply to bot message
+            reply_to_id = message.reply_to.reply_to_msg_id
+            msgs = []
+            splits = text.split('$$$')
+            if len(splits) % 2 == 0:
+                await send_message(chat_id, 'Usage: user$$$assistant$$$...$$$user', msg_id)
+                return
+            for i, text in enumerate(splits):
+                if i % 2 == 0:
+                    role = 'user'
+                else:
+                    role = 'assistant'
+                msgs.append({"role": role, "content": text})
+            await pending_reply_manager.wait_for((chat_id, reply_to_id))
+            new_messages = msgs
+        elif reply_to_message.photo is not None: # user reply to a photo
+            extra_photo_message = reply_to_message
+        elif reply_to_message.document is not None: # user reply to a document
+            extra_document_message = reply_to_message
+        else:
+            return
+    if not message.is_reply or extra_photo_message is not None or extra_document_message is not None: # new message
+        matched_prefix = None
         for m in MODELS:
-            if text.startswith('s' + m['prefix']):
-                text = text[len('s' + m['prefix']):]
+            if text.startswith(m['prefix']):
+                text = text[len(m['prefix']):]
                 model = m['model']
+                matched_prefix = m['prefix']
                 break
         else: # not reply or new message to bot
-            if update.effective_chat.id == update.message.from_user.id: # if in private chat, send hint
-                await send_message(update.effective_chat.id, 'Please start a new conversation with $ or reply to a bot message', update.message.message_id)
+            if chat_id == sender_id: # if in private chat, send hint
+                await send_message(chat_id, 'Please start a new conversation with $ or reply to a bot message', msg_id)
             return
         msgs = [{"model": model}]
         splits = text.split('$$$')
         if len(splits) % 2 or len(splits) < 2:
-            await send_message(update.effective_chat.id, 'Usage: s[$|$$|model$]system$$$user$$$assistant$$$...$$$user', update.message.message_id)
+            await send_message(chat_id, f'Usage: {matched_prefix}system$$$user$$$assistant$$$...$$$user', msg_id)
             return
         for i, text in enumerate(splits):
             if i == 0:
@@ -367,11 +450,53 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 role = 'assistant'
             msgs.append({"role": role, "content": text})
-        db[repr((chat_id, msg_id))] = msgs, None
+        new_messages = msgs
+
+    photo_message = message if message.photo is not None else extra_photo_message
+    photo_hash = None
+    if photo_message is not None:
+        if photo_message.grouped_id is not None:
+            await send_message(chat_id, 'Grouped photos are not yet supported, but will be supported soon', msg_id)
+            return
+        photo_blob = await photo_message.download_media(bytes)
+        photo_hash = save_photo(photo_blob)
+
+    document_message = message if message.document is not None else extra_document_message
+    document_text = None
+    if document_message is not None:
+        if document_message.grouped_id is not None:
+            await send_message(chat_id, 'Grouped files are not yet supported, but will be supported soon', msg_id)
+            return
+        if document_message.document.size > TEXT_FILE_SIZE_LIMIT:
+            await send_message(chat_id, 'File too large', msg_id)
+            return
+        document_blob = await document_message.download_media(bytes)
+        try:
+            document_text = document_blob.decode()
+            assert all(c != '\x00' for c in document_text)
+        except:
+            await send_message(chat_id, 'File is not text file or not valid UTF-8', msg_id)
+            return
+
+    if photo_hash:
+        if len(new_messages) > 1:
+            await send_message(chat_id, 'Photo not supported in multiple messages', msg_id)
+            return
+        new_messages[0]['content'] = [{'type': 'text', 'text': new_messages[0]['content']}, {'type': 'image', 'hash': photo_hash}]
+    elif document_text:
+        if len(new_messages) > 1:
+            await send_message(chat_id, 'File not supported in multiple messages', msg_id)
+            return
+        if new_messages[0]['content']:
+            new_messages[0]['content'] = document_text + '\n\n' + new_messages[0]['content']
+        else:
+            new_messages[0]['content'] = document_text
+
+    db[repr((chat_id, msg_id))] = new_messages, reply_to_id
 
     chat_history, model = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
-        await send_message(update.effective_chat.id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", update.message.message_id)
+        await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id)
         return
 
     error_cnt = 0
@@ -386,8 +511,8 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if first_update_timestamp is None:
                         first_update_timestamp = time.time()
                     if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
-                        await replymsgs.update(reply + ' [!Generating...]')
-                await replymsgs.update(reply)
+                        await replymsgs.update(RichText.from_markdown(reply) + ' [!Generating...]')
+                await replymsgs.update(RichText.from_markdown(reply))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
                     db[repr((chat_id, message_id))] = [{"role": "assistant", "content": reply}], msg_id
@@ -395,7 +520,7 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, cnt=%r): %s', chat_id, msg_id, error_cnt, e)
-                will_retry = not isinstance (e, openai.InvalidRequestError) and error_cnt <= OPENAI_MAX_RETRY
+                will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
                 error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
                 if will_retry:
                     error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
@@ -407,10 +532,12 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if not will_retry:
                     break
 
-async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_message(update.effective_chat.id, f'chat_id={update.effective_chat.id} user_id={update.message.from_user.id} is_whitelisted={is_whitelist(update.effective_chat.id)}', update.message.message_id)
+async def ping(message):
+    await send_message(message.chat_id, f'chat_id={message.chat_id} user_id={message.sender_id} is_whitelisted={is_whitelist(message.chat_id)}', message.id)
 
-if __name__ == '__main__':
+async def main():
+    global bot_id, pending_reply_manager, db, bot
+
     logFormatter = logging.Formatter("%(asctime)s %(process)d %(levelname)s %(message)s")
 
     rootLogger = logging.getLogger()
@@ -432,10 +559,41 @@ if __name__ == '__main__':
             db['whitelist'] = {ADMIN_ID}
         bot_id = int(TELEGRAM_BOT_TOKEN.split(':')[0])
         pending_reply_manager = PendingReplyManager()
-        application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).concurrent_updates(True).build()
-        application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), reply_handler))
-        application.add_handler(CommandHandler('ping', ping))
-        application.add_handler(CommandHandler('add_whitelist', add_whitelist_handler))
-        application.add_handler(CommandHandler('del_whitelist', del_whitelist_handler))
-        application.add_handler(CommandHandler('get_whitelist', get_whitelist_handler))
-        application.run_polling()
+        async with await TelegramClient('bot', TELEGRAM_API_ID, TELEGRAM_API_HASH).start(bot_token=TELEGRAM_BOT_TOKEN) as bot:
+            bot.parse_mode = None
+            me = await bot.get_me()
+            @bot.on(events.NewMessage)
+            async def process(event):
+                if event.message.chat_id is None:
+                    return
+                if event.message.sender_id is None:
+                    return
+                if event.message.message is None:
+                    return
+                text = event.message.message
+                if text == '/ping' or text == f'/ping@{me.username}':
+                    await ping(event.message)
+                elif text == '/list_models' or text == f'/list_models@{me.username}':
+                    await list_models_handler(event.message)
+                elif text == '/add_whitelist' or text == f'/add_whitelist@{me.username}':
+                    await add_whitelist_handler(event.message)
+                elif text == '/del_whitelist' or text == f'/del_whitelist@{me.username}':
+                    await del_whitelist_handler(event.message)
+                elif text == '/get_whitelist' or text == f'/get_whitelist@{me.username}':
+                    await get_whitelist_handler(event.message)
+                else:
+                    await reply_handler(event.message)
+            assert await bot(functions.bots.SetBotCommandsRequest(
+                scope=types.BotCommandScopeDefault(),
+                lang_code='en',
+                commands=[types.BotCommand(command, description) for command, description in [
+                    ('ping', 'Test bot connectivity'),
+                    ('list_models', 'List supported models'),
+                    ('add_whitelist', 'Add this group to whitelist (only admin)'),
+                    ('del_whitelist', 'Delete this group from whitelist (only admin)'),
+                    ('get_whitelist', 'List groups in whitelist (only admin)'),
+                ]]
+            ))
+            await bot.run_until_disconnected()
+
+asyncio.run(main())
