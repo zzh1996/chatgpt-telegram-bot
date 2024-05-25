@@ -31,7 +31,7 @@ DEFAULT_MODEL = 'claude-3-opus-20240229' # For compatibility with the old databa
 def get_prompt(model):
     for m in MODELS:
         if m['model'] == model:
-            return m['prompt_template'].replace('{current_time}', (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
+            return m['prompt_template'].replace('{current_time}', (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
     raise ValueError('Model not found')
 
 aclient = AsyncAnthropic(
