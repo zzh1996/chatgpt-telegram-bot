@@ -381,6 +381,8 @@ async def reply_handler(message):
     if not text and message.photo is None and message.document is None: # unknown media types
         return
     if message.is_reply:
+        if message.reply_to.quote_text is not None:
+            return
         reply_to_message = await message.get_reply_message()
         if reply_to_message.sender_id == bot_id: # user reply to bot message
             reply_to_id = message.reply_to.reply_to_msg_id
