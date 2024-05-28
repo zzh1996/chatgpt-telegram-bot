@@ -25,6 +25,7 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 'z$', 'model': 'glm-4', 'prompt_template': ''},
+    {'prefix': 'z-$', 'model': 'glm-4 disable_search', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'glm-4' # For compatibility with the old database format
 VISION_MODEL = 'glm-4v'
@@ -76,6 +77,10 @@ class ZhipuAI:
             'Content-Type': 'application/json',
             'Authorization': self.generate_token(1000),
         }
+        disable_search = False
+        if model.endswith(' disable_search'):
+            model = model[:-len(' disable_search')]
+            disable_search = True
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 "https://open.bigmodel.cn/api/paas/v4/chat/completions",
@@ -84,6 +89,7 @@ class ZhipuAI:
                     'model': model,
                     'messages': messages,
                     'stream': True,
+                    'tools': [{'type': 'web_search', 'web_search': {'enable': not disable_search}}],
                 }
             ) as response:
                 if response.status != 200:
