@@ -24,8 +24,16 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'z$', 'model': 'glm-4', 'prompt_template': ''},
-    {'prefix': 'z-$', 'model': 'glm-4 disable_search', 'prompt_template': ''},
+    {'prefix': 'z$', 'model': 'glm-4-0520', 'prompt_template': ''},
+    {'prefix': 'z-$', 'model': 'glm-4-0520 disable_search', 'prompt_template': ''},
+    {'prefix': 'glm-4$', 'model': 'glm-4', 'prompt_template': ''},
+    {'prefix': 'glm-4-$', 'model': 'glm-4 disable_search', 'prompt_template': ''},
+    {'prefix': 'glm-4-air$', 'model': 'glm-4-air', 'prompt_template': ''},
+    {'prefix': 'glm-4-air-$', 'model': 'glm-4-air disable_search', 'prompt_template': ''},
+    {'prefix': 'glm-4-airx$', 'model': 'glm-4-airx', 'prompt_template': ''},
+    {'prefix': 'glm-4-airx-$', 'model': 'glm-4-airx disable_search', 'prompt_template': ''},
+    {'prefix': 'glm-4-flash$', 'model': 'glm-4-flash', 'prompt_template': ''},
+    {'prefix': 'glm-4-flash-$', 'model': 'glm-4-flash disable_search', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'glm-4' # For compatibility with the old database format
 VISION_MODEL = 'glm-4v'
