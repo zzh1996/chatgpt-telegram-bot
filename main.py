@@ -29,6 +29,25 @@ MODELS = [
     {'prefix': 'qwen-plus$', 'model': 'qwen-plus', 'prompt_template': ''},
     {'prefix': 'qwen-turbo$', 'model': 'qwen-turbo', 'prompt_template': ''},
     # {'prefix': 'qwen-vl-max$', 'model': 'qwen-vl-max', 'prompt_template': ''},
+
+    {'prefix': 'qwen2-57b-a14b-instruct$', 'model': 'qwen2-57b-a14b-instruct', 'prompt_template': ''},
+    {'prefix': 'qwen2-72b-instruct$', 'model': 'qwen2-72b-instruct', 'prompt_template': ''},
+    {'prefix': 'qwen2-7b-instruct$', 'model': 'qwen2-7b-instruct', 'prompt_template': ''},
+    {'prefix': 'qwen2-1.5b-instruct$', 'model': 'qwen2-1.5b-instruct', 'prompt_template': ''},
+    {'prefix': 'qwen2-0.5b-instruct$', 'model': 'qwen2-0.5b-instruct', 'prompt_template': ''},
+    {'prefix': 'qwen1.5-110b-chat$', 'model': 'qwen1.5-110b-chat', 'prompt_template': ''},
+    {'prefix': 'qwen1.5-72b-chat$', 'model': 'qwen1.5-72b-chat', 'prompt_template': ''},
+    {'prefix': 'qwen1.5-32b-chat$', 'model': 'qwen1.5-32b-chat', 'prompt_template': ''},
+    {'prefix': 'qwen1.5-14b-chat$', 'model': 'qwen1.5-14b-chat', 'prompt_template': ''},
+    {'prefix': 'qwen1.5-7b-chat$', 'model': 'qwen1.5-7b-chat', 'prompt_template': ''},
+    {'prefix': 'qwen1.5-1.8b-chat$', 'model': 'qwen1.5-1.8b-chat', 'prompt_template': ''},
+    {'prefix': 'qwen1.5-0.5b-chat$', 'model': 'qwen1.5-0.5b-chat', 'prompt_template': ''},
+    {'prefix': 'codeqwen1.5-7b-chat$', 'model': 'codeqwen1.5-7b-chat', 'prompt_template': ''},
+    {'prefix': 'qwen-72b-chat$', 'model': 'qwen-72b-chat', 'prompt_template': ''},
+    {'prefix': 'qwen-14b-chat$', 'model': 'qwen-14b-chat', 'prompt_template': ''},
+    {'prefix': 'qwen-7b-chat$', 'model': 'qwen-7b-chat', 'prompt_template': ''},
+    {'prefix': 'qwen-1.8b-longcontext-chat$', 'model': 'qwen-1.8b-longcontext-chat', 'prompt_template': ''},
+    {'prefix': 'qwen-1.8b-chat$', 'model': 'qwen-1.8b-chat', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'qwen-max-0428' # For compatibility with the old database format
 VISION_MODEL = 'qwen-vl-max'
