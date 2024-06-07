@@ -39,7 +39,7 @@ TELEGRAM_MIN_INTERVAL = 3
 OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 30
 FIRST_BATCH_DELAY = 1
-TEXT_FILE_SIZE_LIMIT = 100_000
+TEXT_FILE_SIZE_LIMIT = 10_000_000
 
 telegram_last_timestamp = defaultdict(lambda: None)
 telegram_rate_limit_lock = defaultdict(asyncio.Lock)
