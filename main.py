@@ -22,7 +22,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'q$', 'model': 'qwen-max-0428', 'prompt_template': ''},
+    {'prefix': 'q$', 'model': 'qwen2-72b-instruct', 'prompt_template': ''},
+    {'prefix': 'qwen-max-0428$', 'model': 'qwen-max-0428', 'prompt_template': ''},
     {'prefix': 'qwen-max-0403$', 'model': 'qwen-max-0403', 'prompt_template': ''},
     {'prefix': 'qwen-max-0107$', 'model': 'qwen-max-0107', 'prompt_template': ''},
     {'prefix': 'qwen-max-longcontext$', 'model': 'qwen-max-longcontext', 'prompt_template': ''},
