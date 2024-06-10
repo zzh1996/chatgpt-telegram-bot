@@ -429,6 +429,8 @@ async def reply_handler(message):
         if chat_id == sender_id and len(models) != len(triggers):
             await send_message(chat_id, '[!] Error: Unknown trigger in prefix', msg_id)
             return
+        if not models:
+            return
 
     photo_message = message if message.photo is not None else extra_photo_message
     photo_hash = None
