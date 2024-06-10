@@ -448,7 +448,7 @@ async def reply_handler(message):
     photo_hash = None
     if photo_message is not None:
         if photo_message.grouped_id is not None:
-            await send_message(chat_id, 'Grouped photos are not yet supported, but will be supported soon', msg_id)
+            await send_message(chat_id, '[!] Error: Grouped photos are not yet supported, but will be supported soon', msg_id)
             return
         photo_blob = await photo_message.download_media(bytes)
         photo_hash = save_photo(photo_blob)
@@ -457,17 +457,17 @@ async def reply_handler(message):
     document_text = None
     if document_message is not None:
         if document_message.grouped_id is not None:
-            await send_message(chat_id, 'Grouped files are not yet supported, but will be supported soon', msg_id)
+            await send_message(chat_id, '[!] Error: Grouped files are not yet supported, but will be supported soon', msg_id)
             return
         if document_message.document.size > TEXT_FILE_SIZE_LIMIT:
-            await send_message(chat_id, 'File too large', msg_id)
+            await send_message(chat_id, '[!] Error: File too large', msg_id)
             return
         document_blob = await document_message.download_media(bytes)
         try:
             document_text = document_blob.decode()
             assert all(c != '\x00' for c in document_text)
         except:
-            await send_message(chat_id, 'File is not text file or not valid UTF-8', msg_id)
+            await send_message(chat_id, '[!] Error: File is not text file or not valid UTF-8', msg_id)
             return
 
     if photo_hash:
