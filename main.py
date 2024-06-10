@@ -56,6 +56,7 @@ OPENAI_MAX_RETRY = 1
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
 TEXT_FILE_SIZE_LIMIT = 100_000
+TRIGGERS_LIMIT = 20
 
 telegram_last_timestamp = defaultdict(lambda: None)
 telegram_rate_limit_lock = defaultdict(asyncio.Lock)
@@ -236,7 +237,7 @@ def load_photo(h):
     with open(path, 'rb') as f:
         return f.read()
 
-async def completion(chat_history, model, chat_id, msg_id): # chat_history = [user, ai, user, ai, ..., user]
+async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
     system_prompt = get_prompt(model)
     messages=[{"role": "system", "content": system_prompt}] if system_prompt else []
@@ -254,11 +255,11 @@ async def completion(chat_history, model, chat_id, msg_id): # chat_history = [us
                         if obj['type'] == 'image_url':
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
-    logging.info('Request (chat_id=%r, msg_id=%r, model=%r): %s', chat_id, msg_id, model, remove_image(messages))
+    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r): %s', chat_id, msg_id, task_id, model, remove_image(messages))
     stream = aclient.create(model=model, messages=messages)
     finished = False
     async for response in stream:
-        logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
+        logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
         assert not finished
         if 'error' in response:
             raise ValueError(json.dumps(response, ensure_ascii=False))
@@ -290,7 +291,8 @@ def construct_chat_history(chat_id, msg_id):
             return None, None
         is_bot, message, reply_id, *params = db[key]
         if params:
-            model = params[0]
+            if params[0] is not None:
+                model = params[0]
         if is_bot != should_be_bot:
             logging.error('Role does not match (chat_id=%r, msg_id=%r)', chat_id, msg_id)
             return None, None
@@ -458,7 +460,7 @@ async def reply_handler(message):
     text = message.message
     logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r, photo=%s, document=%s', chat_id, sender_id, msg_id, text, message.photo, message.document)
     reply_to_id = None
-    model = DEFAULT_MODEL
+    models = None
     extra_photo_message = None
     extra_document_message = None
     if not text and message.photo is None and message.document is None: # unknown media types
@@ -477,14 +479,23 @@ async def reply_handler(message):
         else:
             return
     if not message.is_reply or extra_photo_message is not None or extra_document_message is not None: # new message
-        for m in MODELS:
-            if text.startswith(m['prefix']):
-                text = text[len(m['prefix']):]
-                model = m['model']
-                break
-        else: # not reply or new message to bot
+        if '$' not in text:
             if chat_id == sender_id: # if in private chat, send hint
-                await send_message(chat_id, 'Please start a new conversation with $ or reply to a bot message', msg_id)
+                await send_message(chat_id, '[!] Error: Please start a new conversation with $ or reply to a bot message', msg_id)
+            return
+        prefix, text = text.split('$', 1)
+        triggers = prefix.split(',')
+        if len(triggers) > TRIGGERS_LIMIT:
+            await send_message(chat_id, f'[!] Error: Too many triggers (limit: {TRIGGERS_LIMIT})', msg_id)
+            return
+        models = []
+        for t in triggers:
+            for m in MODELS:
+                if m['prefix'] == t + '$':
+                    models.append(m['model'])
+                    break
+        if chat_id == sender_id and len(models) != len(triggers):
+            await send_message(chat_id, '[!] Error: Unknown trigger in prefix', msg_id)
             return
 
     photo_message = message if message.photo is not None else extra_photo_message
@@ -523,19 +534,25 @@ async def reply_handler(message):
     else:
         new_message = text
 
-    db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, model)
+    db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, None)
 
     chat_history, model = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
         await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id)
         return
 
+    models = models if models is not None else [model]
+    async with asyncio.TaskGroup() as tg:
+        for task_id, m in enumerate(models):
+            tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
+
+async def process_request(chat_id, msg_id, chat_history, model, task_id):
     error_cnt = 0
     while True:
         reply = ''
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
-                stream = completion(chat_history, model, chat_id, msg_id)
+                stream = completion(chat_history, model, chat_id, msg_id, task_id)
                 first_update_timestamp = None
                 async for delta in stream:
                     reply += delta
@@ -550,7 +567,7 @@ async def reply_handler(message):
                 return
             except Exception as e:
                 error_cnt += 1
-                logging.exception('Error (chat_id=%r, msg_id=%r, cnt=%r): %s', chat_id, msg_id, error_cnt, e)
+                logging.exception('Error (chat_id=%r, msg_id=%r, model=%r, task_id=%r, cnt=%r): %s', chat_id, msg_id, model, task_id, error_cnt, e)
                 will_retry = error_cnt <= OPENAI_MAX_RETRY
                 error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
                 if will_retry:
