@@ -23,7 +23,9 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 'c$$$', 'model': 'claude-3-haiku-20240307', 'prompt_template': ''},
+    {'prefix': 'claude-3-haiku-20240307$', 'model': 'claude-3-haiku-20240307', 'prompt_template': ''},
     {'prefix': 'c$$', 'model': 'claude-3-sonnet-20240229', 'prompt_template': ''},
+    {'prefix': 'claude-3-sonnet-20240229$', 'model': 'claude-3-sonnet-20240229', 'prompt_template': ''},
     {'prefix': 'c$', 'model': 'claude-3-opus-20240229', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'claude-3-opus-20240229' # For compatibility with the old database format
