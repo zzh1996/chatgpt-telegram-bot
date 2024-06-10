@@ -97,6 +97,8 @@ class PendingReplyManager:
         logging.info('PendingReplyManager waiting for %r finished', reply_id)
 
 def within_interval(chat_id):
+    if telegram_rate_limit_lock[chat_id].locked():
+        return True
     global telegram_last_timestamp
     if telegram_last_timestamp[chat_id] is None:
         return False
