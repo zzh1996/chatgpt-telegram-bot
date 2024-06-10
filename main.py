@@ -422,16 +422,20 @@ async def reply_handler(message):
                 await send_message(chat_id, '[!] Error: Please start a new conversation with $ or reply to a bot message', msg_id)
             return
         prefix, text = text.split('$', 1)
-        triggers = prefix.split(',')
-        if len(triggers) > TRIGGERS_LIMIT:
-            await send_message(chat_id, f'[!] Error: Too many triggers (limit: {TRIGGERS_LIMIT})', msg_id)
+        if '\n' in prefix:
+            if chat_id == sender_id:
+                await send_message(chat_id, '[!] Error: Please start a new conversation with $ or reply to a bot message', msg_id)
             return
+        triggers = prefix.split(',')
         models = []
         for t in triggers:
             for m in MODELS:
-                if m['prefix'] == t + '$':
+                if m['prefix'] == t.strip() + '$':
                     models.append(m['model'])
                     break
+        if models and len(triggers) > TRIGGERS_LIMIT:
+            await send_message(chat_id, f'[!] Error: Too many triggers (limit: {TRIGGERS_LIMIT})', msg_id)
+            return
         if chat_id == sender_id and len(models) != len(triggers):
             await send_message(chat_id, '[!] Error: Unknown trigger in prefix', msg_id)
             return
