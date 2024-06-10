@@ -318,9 +318,7 @@ def construct_chat_history(chat_id, msg_id):
     if len(messages) % 2 != 1:
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
         return None, None
-    if has_image:
-        model = VISION_MODEL
-    return messages[::-1], model
+    return messages[::-1], model, has_image
 
 @only_admin
 async def add_whitelist_handler(message):
@@ -538,7 +536,7 @@ async def reply_handler(message):
 
     db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, None)
 
-    chat_history, model = construct_chat_history(chat_id, msg_id)
+    chat_history, model, has_image = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
         await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id)
         return
@@ -546,6 +544,8 @@ async def reply_handler(message):
     models = models if models is not None else [model]
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
+            if has_image:
+                m = VISION_MODEL
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
