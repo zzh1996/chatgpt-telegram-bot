@@ -90,16 +90,19 @@ class ZhipuAI:
         if model.endswith(' disable_search'):
             model = model[:-len(' disable_search')]
             disable_search = True
+        payload = {
+            'model': model,
+            'messages': messages,
+            'stream': True,
+            'tools': [{'type': 'web_search', 'web_search': {'enable': not disable_search}}],
+        }
+        if model != VISION_MODEL:
+            payload['max_tokens'] = 8192
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 "https://open.bigmodel.cn/api/paas/v4/chat/completions",
                 headers=headers,
-                json={
-                    'model': model,
-                    'messages': messages,
-                    'stream': True,
-                    'tools': [{'type': 'web_search', 'web_search': {'enable': not disable_search}}],
-                }
+                json=payload
             ) as response:
                 if response.status != 200:
                     content = await response.text()
