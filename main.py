@@ -192,10 +192,11 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         messages,
         stream=True,
         safety_settings=safety_settings,
+        request_options={"timeout": 600},
     )
     async for response in stream:
         response_text = response.text
-        logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response_text)
+        logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %r', chat_id, msg_id, task_id, response_text)
         yield response_text
 
 def construct_chat_history(chat_id, msg_id):
