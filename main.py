@@ -588,7 +588,7 @@ async def main():
             async def process(event):
                 if event.message.chat_id is None:
                     return
-                if event.message.sender_id is None:
+                if event.message.sender_id is None or event.message.sender_id == bot_id:
                     return
                 if event.message.message is None:
                     return
