@@ -23,6 +23,7 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 'd$', 'model': 'deepseek-chat', 'prompt_template': ''},
+    {'prefix': 'dc$', 'model': 'deepseek-coder', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'deepseek-chat' # For compatibility with the old database format
 
