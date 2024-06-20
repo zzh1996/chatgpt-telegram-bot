@@ -22,9 +22,10 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'claude-3-haiku-20240307$', 'model': 'claude-3-haiku-20240307', 'prompt_template': ''},
-    {'prefix': 'claude-3-sonnet-20240229$', 'model': 'claude-3-sonnet-20240229', 'prompt_template': ''},
-    {'prefix': 'c$', 'model': 'claude-3-opus-20240229', 'prompt_template': ''},
+    {'prefix': 'c$', 'model': 'claude-3-5-sonnet-20240620', 'prompt_template': ''},
+    {'prefix': 'c3$', 'model': 'claude-3-opus-20240229', 'prompt_template': ''},
+    {'prefix': 'c3s$', 'model': 'claude-3-sonnet-20240229', 'prompt_template': ''},
+    {'prefix': 'c3h$', 'model': 'claude-3-haiku-20240307', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'claude-3-opus-20240229' # For compatibility with the old database format
 
