@@ -21,39 +21,13 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 
 ADMIN_ID = 71863318
 
-GPT_35_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-3.5 architecture.\nKnowledge cutoff: 2021-09\nCurrent date: {current_date}'
-GPT_4_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2021-09\nCurrent date: {current_date}'
-GPT_4_PROMPT_2 = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2023-04\nCurrent date: {current_date}'
-GPT_4_TURBO_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2023-12\nCurrent date: {current_date}\n\nImage input capabilities: Enabled\nPersonality: v2'
-GPT_4O_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2023-10\nCurrent date: {current_date}\n\nImage input capabilities: Enabled\nPersonality: v2'
-
 MODELS = [
-    {'prefix': '$', 'model': 'gpt-4o-2024-05-13', 'prompt_template': GPT_4O_PROMPT},
-    {'prefix': '4o$', 'model': 'gpt-4o-2024-05-13', 'prompt_template': GPT_4O_PROMPT},
-    {'prefix': '4om$', 'model': 'gpt-4o-mini-2024-07-18', 'prompt_template': GPT_4O_PROMPT},
-    {'prefix': '4$', 'model': 'gpt-4-turbo-2024-04-09', 'prompt_template': GPT_4_TURBO_PROMPT},
-    {'prefix': '3$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': GPT_35_PROMPT},
-
-    {'prefix': 'gpt-4o-mini-2024-07-18$', 'model': 'gpt-4o-mini-2024-07-18', 'prompt_template': GPT_4O_PROMPT},
-    {'prefix': 'gpt-4o-mini$', 'model': 'gpt-4o-mini', 'prompt_template': GPT_4O_PROMPT},
-
-    {'prefix': 'gpt-4o-2024-05-13$', 'model': 'gpt-4o-2024-05-13', 'prompt_template': GPT_4O_PROMPT},
-    {'prefix': 'gpt-4o$', 'model': 'gpt-4o', 'prompt_template': GPT_4O_PROMPT},
-
-    {'prefix': 'gpt-4-turbo-2024-04-09$', 'model': 'gpt-4-turbo-2024-04-09', 'prompt_template': GPT_4_TURBO_PROMPT},
-    {'prefix': 'gpt-4-0125-preview$', 'model': 'gpt-4-0125-preview', 'prompt_template': GPT_4_TURBO_PROMPT},
-    {'prefix': 'gpt-4-1106-preview$', 'model': 'gpt-4-1106-preview', 'prompt_template': GPT_4_PROMPT_2},
-    {'prefix': 'gpt-4-1106-vision-preview$', 'model': 'gpt-4-1106-vision-preview', 'prompt_template': GPT_4_PROMPT_2},
-    {'prefix': 'gpt-4-0613$', 'model': 'gpt-4-0613', 'prompt_template': GPT_4_PROMPT},
-    {'prefix': 'gpt-4-32k-0613$', 'model': 'gpt-4-32k-0613', 'prompt_template': GPT_4_PROMPT},
-
-    {'prefix': 'gpt-3.5-turbo-0125$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': GPT_35_PROMPT},
-    {'prefix': 'gpt-3.5-turbo-1106$', 'model': 'gpt-3.5-turbo-1106', 'prompt_template': GPT_35_PROMPT},
-    {'prefix': 'gpt-3.5-turbo-0613$', 'model': 'gpt-3.5-turbo-0613', 'prompt_template': GPT_35_PROMPT},
-    {'prefix': 'gpt-3.5-turbo-16k-0613$', 'model': 'gpt-3.5-turbo-16k-0613', 'prompt_template': GPT_35_PROMPT},
-    {'prefix': 'gpt-3.5-turbo-0301$', 'model': 'gpt-3.5-turbo-0301', 'prompt_template': GPT_35_PROMPT},
+    {'prefix': 'l$', 'model': 'accounts/fireworks/models/llama-v3p1-405b-instruct', 'prompt_template': ''},
+    {'prefix': 'l70$', 'model': 'accounts/fireworks/models/llama-v3p1-70b-instruct', 'prompt_template': ''},
+    {'prefix': 'l8$', 'model': 'accounts/fireworks/models/llama-v3p1-8b-instruct', 'prompt_template': ''},
+    {'prefix': 'l3$', 'model': 'accounts/fireworks/models/llama-v3-70b-instruct', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'gpt-4-0613' # For compatibility with the old database format
+DEFAULT_MODEL = 'accounts/fireworks/models/llama-v3p1-405b-instruct' # For compatibility with the old database format
 
 def get_prompt(model):
     for m in MODELS:
@@ -62,7 +36,8 @@ def get_prompt(model):
     raise ValueError('Model not found')
 
 aclient = openai.AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
+    api_key=os.getenv("FIREWORKS_API_KEY"),
+    base_url="https://api.fireworks.ai/inference/v1",
     max_retries=0,
     timeout=15,
 )
@@ -525,7 +500,7 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
     error_cnt = 0
     while True:
         reply = ''
-        async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
+        async with BotReplyMessages(chat_id, msg_id, f'[{model.split("/")[-1]}] ') as replymsgs:
             try:
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
                 first_update_timestamp = None
