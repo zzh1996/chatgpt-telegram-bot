@@ -22,12 +22,13 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'l$', 'model': 'accounts/fireworks/models/llama-v3p1-405b-instruct', 'prompt_template': ''},
-    {'prefix': 'l70$', 'model': 'accounts/fireworks/models/llama-v3p1-70b-instruct', 'prompt_template': ''},
-    {'prefix': 'l8$', 'model': 'accounts/fireworks/models/llama-v3p1-8b-instruct', 'prompt_template': ''},
-    {'prefix': 'l3$', 'model': 'accounts/fireworks/models/llama-v3-70b-instruct', 'prompt_template': ''},
+    {'prefix': 'l$', 'model': 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo', 'prompt_template': ''},
+    {'prefix': 'l70$', 'model': 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo', 'prompt_template': ''},
+    {'prefix': 'l8$', 'model': 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo', 'prompt_template': ''},
+    {'prefix': 'l3$', 'model': 'meta-llama/Meta-Llama-3-70B-Instruct-Turbo', 'prompt_template': ''},
+    {'prefix': 'g2$', 'model': 'google/gemma-2-27b-it', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'accounts/fireworks/models/llama-v3p1-405b-instruct' # For compatibility with the old database format
+DEFAULT_MODEL = 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo' # For compatibility with the old database format
 
 def get_prompt(model):
     for m in MODELS:
@@ -36,8 +37,8 @@ def get_prompt(model):
     raise ValueError('Model not found')
 
 aclient = openai.AsyncOpenAI(
-    api_key=os.getenv("FIREWORKS_API_KEY"),
-    base_url="https://api.fireworks.ai/inference/v1",
+    api_key=os.getenv("TOGETHER_API_KEY"),
+    base_url="https://api.together.xyz/v1",
     max_retries=0,
     timeout=15,
 )
@@ -204,19 +205,13 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         if obj.delta.content is not None:
             yield obj.delta.content
         if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
-            assert all(item is None for item in [
-                obj.delta.content,
-                obj.delta.function_call,
-                obj.delta.role,
-                obj.delta.tool_calls,
-            ])
             finish_reason = obj.finish_reason
             if 'finish_details' in obj.model_extra and obj.finish_details is not None:
                 assert finish_reason is None
                 finish_reason = obj.finish_details['type']
             if finish_reason == 'length':
                 yield '\n\n[!] Error: Output truncated due to limit'
-            elif finish_reason == 'stop':
+            elif finish_reason == 'eos' or finish_reason == 'stop':
                 pass
             elif finish_reason is not None:
                 if obj.finish_reason is not None:
@@ -451,6 +446,9 @@ async def reply_handler(message):
     photo_message = message if message.photo is not None else extra_photo_message
     photo_hash = None
     if photo_message is not None:
+        await send_message(chat_id, '[!] Error: Images are not supported', msg_id)
+        return
+
         if photo_message.grouped_id is not None:
             await send_message(chat_id, '[!] Error: Grouped photos are not yet supported, but will be supported soon', msg_id)
             return
@@ -495,6 +493,7 @@ async def reply_handler(message):
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
+            await asyncio.sleep(3)
 
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
     error_cnt = 0
@@ -519,7 +518,10 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, model=%r, task_id=%r, cnt=%r): %s', chat_id, msg_id, model, task_id, error_cnt, e)
                 will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
-                error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
+                error_msg = traceback.format_exception_only(e)[-1].strip()
+                if len(error_msg) > 500:
+                    error_msg = error_msg[:500] + '...'
+                error_msg = f'[!] Error: {error_msg}'
                 if will_retry:
                     error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
                 if reply:
