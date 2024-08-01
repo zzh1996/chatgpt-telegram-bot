@@ -177,7 +177,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             if 'parts' in message:
                 if isinstance(message['parts'], list):
                     for obj in message['parts']:
-                        if 'data' in obj:
+                        if isinstance(obj, dict) and 'data' in obj:
                             obj['data'] = '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
