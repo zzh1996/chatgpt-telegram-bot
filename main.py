@@ -500,6 +500,10 @@ async def reply_handler(message):
     else:
         new_message = text
 
+    if (isinstance(new_message, str) and len(new_message) == 0) or (isinstance(new_message, list) and sum(len(m['text']) for m in new_message if m['type'] == 'text') == 0  and all(m['type'] == 'text' for m in new_message)):
+        await send_message(chat_id, f"[!] Error: Input text should not be empty", msg_id)
+        return
+
     db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, None)
 
     chat_history, model = construct_chat_history(chat_id, msg_id)
