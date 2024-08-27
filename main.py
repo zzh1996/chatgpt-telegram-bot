@@ -23,10 +23,15 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'g$', 'model': 'gemini-1.5-pro-exp-0801'},
+    {'prefix': 'g$', 'model': 'gemini-1.5-pro-exp-0827'},
     {'prefix': 'g15$', 'model': 'gemini-1.5-pro-latest'},
     {'prefix': 'gf$', 'model': 'gemini-1.5-flash-latest'},
     {'prefix': 'g1$', 'model': 'gemini-1.0-pro-latest', 'vision_model': 'gemini-pro-vision'},
+
+    {'prefix': 'gemini-1.5-pro-exp-0827$', 'model': 'gemini-1.5-pro-exp-0827'},
+    {'prefix': 'gemini-1.5-pro-exp-0801$', 'model': 'gemini-1.5-pro-exp-0801'},
+    {'prefix': 'gemini-1.5-flash-exp-0827$', 'model': 'gemini-1.5-flash-exp-0827'},
+    {'prefix': 'gemini-1.5-flash-8b-exp-0827$', 'model': 'gemini-1.5-flash-8b-exp-0827'},
 ]
 DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
 
