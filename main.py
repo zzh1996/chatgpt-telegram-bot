@@ -174,6 +174,7 @@ def load_photo(h):
 
 async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
+    chat_history = copy.deepcopy(chat_history)
     system_prompt = get_prompt(model)
     messages=[{"role": "system", "content": system_prompt}] if system_prompt else []
     roles = ["user", "assistant"]
@@ -181,6 +182,25 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     for msg in chat_history:
         messages.append({"role": roles[role_id], "content": msg})
         role_id = 1 - role_id
+
+    # cache
+    if model != 'claude-3-sonnet-20240229':
+        n_cache = 0
+        for msg in reversed(messages):
+            if isinstance(msg["content"], str):
+                msg["content"] = [{"type": "text", "text": msg["content"], "cache_control": {"type": "ephemeral"}}]
+                n_cache += 1
+                if n_cache == 4:
+                    break
+            else:
+                for part in reversed(msg["content"]):
+                    part["cache_control"] = {"type": "ephemeral"}
+                    n_cache += 1
+                    if n_cache == 4:
+                        break
+                if n_cache == 4:
+                        break
+
     def remove_image(messages):
         new_messages = copy.deepcopy(messages)
         for message in new_messages:
@@ -191,7 +211,13 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['source']['data'] = obj['source']['data'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
-    stream = await aclient.messages.create(model=model, messages=messages, stream=True, max_tokens=4096)
+    stream = await aclient.messages.create(
+        model=model,
+        messages=messages,
+        stream=True,
+        max_tokens=8192 if model.startswith('claude-3-5-') else 4096,
+        extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+    )
     async for event in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, event)
         if event.type == 'message_start':
@@ -464,18 +490,15 @@ async def reply_handler(message):
             return
 
     if photo_hash:
-        new_message = [{'type': 'text', 'text': text}, {'type': 'image', 'hash': photo_hash}]
-    elif document_text:
+        new_message = [{'type': 'image', 'hash': photo_hash}]
         if text:
-            new_message = document_text + '\n\n' + text
-        else:
-            new_message = document_text
+            new_message.append({'type': 'text', 'text': text})
+    elif document_text:
+        new_message = [{'type': 'text', 'text': document_text}]
+        if text:
+            new_message.append({'type': 'text', 'text': text})
     else:
         new_message = text
-
-    if (isinstance(new_message, str) and len(new_message) == 0) or (isinstance(new_message, list) and sum(len(m['text']) for m in new_message if m['type'] == 'text') == 0):
-        await send_message(chat_id, f"[!] Error: Input text should not be empty", msg_id)
-        return
 
     db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, None)
 
