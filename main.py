@@ -22,7 +22,7 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 'cs$', 'model': 'claude-3-5-sonnet-20240620'},
-    {'prefix': 'c3s$', 'model': 'claude-3-opus-20240229'},
+    {'prefix': 'c3os$', 'model': 'claude-3-opus-20240229'},
     {'prefix': 'c3ss$', 'model': 'claude-3-sonnet-20240229'},
     {'prefix': 'c3hs$', 'model': 'claude-3-haiku-20240307'},
 ]
@@ -162,6 +162,8 @@ def load_photo(h):
         return f.read()
 
 async def completion(messages, model, chat_id, msg_id, system_prompt):
+    system_prompt = system_prompt.strip()
+    messages = copy.deepcopy(messages)
     def remove_image(messages):
         new_messages = copy.deepcopy(messages)
         for message in new_messages:
@@ -171,8 +173,36 @@ async def completion(messages, model, chat_id, msg_id, system_prompt):
                         if obj['type'] == 'image':
                             obj['source']['data'] = obj['source']['data'][:50] + '...'
         return new_messages
+
+    # cache
+    if model != 'claude-3-sonnet-20240229':
+        n_cache = 0
+        for msg in reversed(messages):
+            if isinstance(msg["content"], str):
+                msg["content"] = [{"type": "text", "text": msg["content"], "cache_control": {"type": "ephemeral"}}]
+                n_cache += 1
+                if n_cache == 4:
+                    break
+            else:
+                for part in reversed(msg["content"]):
+                    part["cache_control"] = {"type": "ephemeral"}
+                    n_cache += 1
+                    if n_cache == 4:
+                        break
+                if n_cache == 4:
+                        break
+        if n_cache < 4 and system_prompt:
+            system_prompt = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
+
     logging.info('Request (chat_id=%r, msg_id=%r, system_prompt=%r): %s', chat_id, msg_id, system_prompt, remove_image(messages))
-    stream = await aclient.messages.create(model=model, messages=messages, stream=True, max_tokens=4096, system=system_prompt)
+    stream = await aclient.messages.create(
+        model=model,
+        messages=messages,
+        stream=True,
+        max_tokens=8192 if model.startswith('claude-3-5-') else 4096,
+        system=system_prompt,
+        extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+    )
     async for event in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, event)
         if event.type == 'message_start':
@@ -467,20 +497,23 @@ async def reply_handler(message):
         if len(new_messages) > 1:
             await send_message(chat_id, 'Photo not supported in multiple messages', msg_id)
             return
-        new_messages[0]['content'] = [{'type': 'text', 'text': new_messages[0]['content']}, {'type': 'image', 'hash': photo_hash}]
+        old_text = new_messages[0]['content']
+        new_messages[0]['content'] = [{'type': 'image', 'hash': photo_hash}]
+        if old_text:
+            new_messages[0]['content'].append({'type': 'text', 'text': old_text})
     elif document_text:
         if len(new_messages) > 1:
             await send_message(chat_id, 'File not supported in multiple messages', msg_id)
             return
-        if new_messages[0]['content']:
-            new_messages[0]['content'] = document_text + '\n\n' + new_messages[0]['content']
-        else:
-            new_messages[0]['content'] = document_text
+        old_text = new_messages[0]['content']
+        new_messages[0]['content'] = [{'type': 'text', 'text': document_text}]
+        if old_text:
+            new_messages[0]['content'].append({'type': 'text', 'text': old_text})
 
     for i in new_messages:
         if 'content' in i:
             new_message = i['content']
-            if (isinstance(new_message, str) and len(new_message) == 0) or (isinstance(new_message, list) and sum(len(m['text']) for m in new_message if m['type'] == 'text') == 0):
+            if (isinstance(new_message, str) and len(new_message) == 0) or (isinstance(new_message, list) and sum(len(m['text']) for m in new_message if m['type'] == 'text') == 0 and all(m['type'] == 'text' for m in new_message)):
                 await send_message(chat_id, f"[!] Error: Input text should not be empty", msg_id)
                 return
 
