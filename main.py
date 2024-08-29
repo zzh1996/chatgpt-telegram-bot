@@ -29,7 +29,8 @@ MODELS = [
     {'prefix': 'qwen-max-longcontext$', 'model': 'qwen-max-longcontext', 'prompt_template': ''},
     {'prefix': 'qwen-plus$', 'model': 'qwen-plus', 'prompt_template': ''},
     {'prefix': 'qwen-turbo$', 'model': 'qwen-turbo', 'prompt_template': ''},
-    # {'prefix': 'qwen-vl-max$', 'model': 'qwen-vl-max', 'prompt_template': ''},
+    {'prefix': 'qwen-vl-max$', 'model': 'qwen-vl-max', 'prompt_template': ''},
+    {'prefix': 'qwen-vl-max-0809$', 'model': 'qwen-vl-max-0809', 'prompt_template': ''},
 
     {'prefix': 'qwen2-57b-a14b-instruct$', 'model': 'qwen2-57b-a14b-instruct', 'prompt_template': ''},
     {'prefix': 'qwen2-72b-instruct$', 'model': 'qwen2-72b-instruct', 'prompt_template': ''},
@@ -51,7 +52,7 @@ MODELS = [
     {'prefix': 'qwen-1.8b-chat$', 'model': 'qwen-1.8b-chat', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'qwen-max-0428' # For compatibility with the old database format
-VISION_MODEL = 'qwen-vl-max'
+VISION_MODEL = 'qwen-vl-max-0809'
 
 def get_prompt(model):
     for m in MODELS:
@@ -286,9 +287,7 @@ def construct_chat_history(chat_id, msg_id):
     if len(messages) % 2 != 1:
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
         return None, None
-    if has_image:
-        model = VISION_MODEL
-    return messages[::-1], model
+    return messages[::-1], model, has_image
 
 @only_admin
 async def add_whitelist_handler(message):
@@ -475,9 +474,6 @@ async def reply_handler(message):
     photo_message = message if message.photo is not None else extra_photo_message
     photo_hash = None
     if photo_message is not None:
-        await send_message(chat_id, '[!] Error: Images are not supported now, and will be supported soon', msg_id)
-        return
-
         if photo_message.grouped_id is not None:
             await send_message(chat_id, '[!] Error: Grouped photos are not yet supported, but will be supported soon', msg_id)
             return
@@ -502,7 +498,9 @@ async def reply_handler(message):
             return
 
     if photo_hash:
-        new_message = [{'type': 'text', 'text': text}, {'type': 'image', 'hash': photo_hash}]
+        new_message = [{'type': 'image', 'hash': photo_hash}]
+        if text:
+            new_message.append({'type': 'text', 'text': text})
     elif document_text:
         if text:
             new_message = document_text + '\n\n' + text
@@ -513,7 +511,7 @@ async def reply_handler(message):
 
     db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, None)
 
-    chat_history, model = construct_chat_history(chat_id, msg_id)
+    chat_history, model, has_image = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
         await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id)
         return
@@ -521,6 +519,8 @@ async def reply_handler(message):
     models = models if models is not None else [model]
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
+            if has_image:
+                m = VISION_MODEL
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
