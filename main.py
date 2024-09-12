@@ -33,6 +33,10 @@ MODELS = [
     {'prefix': '4om$', 'model': 'gpt-4o-mini-2024-07-18', 'prompt_template': GPT_4O_PROMPT},
     {'prefix': '4$', 'model': 'gpt-4-turbo-2024-04-09', 'prompt_template': GPT_4_TURBO_PROMPT},
     {'prefix': '3$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': GPT_35_PROMPT},
+    {'prefix': 'o1$', 'model': 'o1-preview', 'prompt_template': ''},
+
+    {'prefix': 'o1-preview$', 'model': 'o1-preview', 'prompt_template': ''},
+    {'prefix': 'o1-mini$', 'model': 'o1-mini', 'prompt_template': ''},
 
     {'prefix': 'gpt-4o-mini-2024-07-18$', 'model': 'gpt-4o-mini-2024-07-18', 'prompt_template': GPT_4O_PROMPT},
     {'prefix': 'gpt-4o-mini$', 'model': 'gpt-4o-mini', 'prompt_template': GPT_4O_PROMPT},
@@ -218,6 +222,11 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
+    if model.startswith('o1-'):
+        response = await aclient.chat.completions.create(model=model, messages=messages)
+        logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
+        yield response.choices[0].message.content
+        return
     stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
     finished = False
     async for response in stream:
