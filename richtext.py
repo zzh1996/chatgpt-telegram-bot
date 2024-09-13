@@ -20,6 +20,14 @@ class RichText:
         return RichText([{'type': 'bold', 'content': RichText(s)}])
 
     @classmethod
+    def Italic(cls, s):
+        return RichText([{'type': 'italic', 'content': RichText(s)}])
+
+    @classmethod
+    def Quote(cls, s):
+        return RichText([{'type': 'quote', 'content': RichText(s)}])
+
+    @classmethod
     def Code(cls, s):
         return RichText([{'type': 'code', 'content': s}])
 
@@ -161,6 +169,22 @@ class RichText:
                 start, length = strip_entity(t)
                 if length:
                     entities.append(types.MessageEntityBold(offset + start, length))
+                offset += utf16len(t)
+            elif c['type'] == 'italic':
+                t, e = c['content'].to_telegram(offset)
+                text += t
+                entities.extend(e)
+                start, length = strip_entity(t)
+                if length:
+                    entities.append(types.MessageEntityItalic(offset + start, length))
+                offset += utf16len(t)
+            elif c['type'] == 'quote':
+                t, e = c['content'].to_telegram(offset)
+                text += t
+                entities.extend(e)
+                start, length = strip_entity(t)
+                if length:
+                    entities.append(types.MessageEntityBlockquote(offset + start, length))
                 offset += utf16len(t)
             elif c['type'] == 'code':
                 text += c['content']
