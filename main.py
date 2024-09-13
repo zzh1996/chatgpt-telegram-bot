@@ -11,6 +11,7 @@ import copy
 from collections import defaultdict
 from richtext import RichText
 import openai
+import httpx
 from telethon import TelegramClient, events, errors, functions, types
 import signal
 
@@ -36,7 +37,9 @@ MODELS = [
     {'prefix': 'o1$', 'model': 'o1-preview', 'prompt_template': ''},
 
     {'prefix': 'o1-preview$', 'model': 'o1-preview', 'prompt_template': ''},
+    {'prefix': 'o1-preview-2024-09-12$', 'model': 'o1-preview-2024-09-12', 'prompt_template': ''},
     {'prefix': 'o1-mini$', 'model': 'o1-mini', 'prompt_template': ''},
+    {'prefix': 'o1-mini-2024-09-12$', 'model': 'o1-mini-2024-09-12', 'prompt_template': ''},
 
     {'prefix': 'gpt-4o-mini-2024-07-18$', 'model': 'gpt-4o-mini-2024-07-18', 'prompt_template': GPT_4O_PROMPT},
     {'prefix': 'gpt-4o-mini$', 'model': 'gpt-4o-mini', 'prompt_template': GPT_4O_PROMPT},
@@ -221,30 +224,49 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                         if obj['type'] == 'image_url':
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
-    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
+    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r): %s', chat_id, msg_id, task_id, model, remove_image(messages))
+
     if model.startswith('o1-'):
-        response = await aclient.chat.completions.create(model=model, messages=messages)
-        logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
-        yield response.choices[0].message.content
-        return
-    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
+        async with bot.action(chat_id, 'typing'):
+            single_response = await aclient.chat.completions.create(
+                model=model,
+                messages=messages,
+                timeout=httpx.Timeout(timeout=600, connect=15),
+            )
+        async def to_aiter(x):
+            yield x
+        stream = to_aiter(single_response)
+    else:
+        stream = await aclient.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
-        assert not finished
+        if finished:
+            assert len(response.choices) == 0
+            continue
         obj = response.choices[0]
-        if obj.delta.role is not None:
-            if obj.delta.role != 'assistant':
+        if hasattr(obj, 'delta'):
+            delta = obj.delta
+        else:
+            delta = obj.message
+        if delta.role is not None:
+            if delta.role != 'assistant':
                 raise ValueError("Role error")
-        if obj.delta.content is not None:
-            yield obj.delta.content
+        if delta.content is not None:
+            yield delta.content
         if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
-            assert all(item is None for item in [
-                obj.delta.content,
-                obj.delta.function_call,
-                obj.delta.role,
-                obj.delta.tool_calls,
-            ])
+            if hasattr(obj, 'delta'):
+                assert all(item is None for item in [
+                    delta.content,
+                    delta.function_call,
+                    delta.role,
+                    delta.tool_calls,
+                ])
             finish_reason = obj.finish_reason
             if 'finish_details' in obj.model_extra and obj.finish_details is not None:
                 assert finish_reason is None
