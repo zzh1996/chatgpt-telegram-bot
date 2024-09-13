@@ -35,6 +35,7 @@ MODELS = [
     {'prefix': '4$', 'model': 'gpt-4-turbo-2024-04-09', 'prompt_template': GPT_4_TURBO_PROMPT},
     {'prefix': '3$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': GPT_35_PROMPT},
     {'prefix': 'o1$', 'model': 'o1-preview', 'prompt_template': ''},
+    {'prefix': 'o1m$', 'model': 'o1-mini', 'prompt_template': ''},
 
     {'prefix': 'o1-preview$', 'model': 'o1-preview', 'prompt_template': ''},
     {'prefix': 'o1-preview-2024-09-12$', 'model': 'o1-preview-2024-09-12', 'prompt_template': ''},
@@ -62,6 +63,13 @@ MODELS = [
     {'prefix': 'gpt-3.5-turbo-0301$', 'model': 'gpt-3.5-turbo-0301', 'prompt_template': GPT_35_PROMPT},
 ]
 DEFAULT_MODEL = 'gpt-4-0613' # For compatibility with the old database format
+
+PRICING = {
+    'o1-preview': (15e-6, 60e-6),
+    'o1-preview-2024-09-12': (15e-6, 60e-6),
+    'o1-mini': (3e-6, 12e-6),
+    'o1-mini-2024-09-12': (3e-6, 12e-6),
+}
 
 def get_prompt(model):
     for m in MODELS:
@@ -247,12 +255,16 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
         if model.startswith('o1-') and response.usage is not None:
-            usage_text = f"prompt_tokens: {response.usage.prompt_tokens}\n"
+            usage_text = f"Prompt tokens: {response.usage.prompt_tokens}\n"
             if response.usage.completion_tokens_details is not None:
                 if response.usage.completion_tokens_details.reasoning_tokens is not None:
                     if response.usage.completion_tokens_details.reasoning_tokens > 0:
-                        usage_text += f"reasoning_tokens: {response.usage.completion_tokens_details.reasoning_tokens}\n"
-            usage_text += f"completion_tokens: {response.usage.completion_tokens}\n"
+                        usage_text += f"Reasoning tokens: {response.usage.completion_tokens_details.reasoning_tokens}\n"
+            usage_text += f"Completion tokens: {response.usage.completion_tokens}\n"
+            if model in PRICING:
+                input_price, output_price = PRICING[model]
+                cost = response.usage.prompt_tokens * input_price + response.usage.completion_tokens * output_price
+                usage_text += f"Cost: ${cost:.2f}\n"
             yield {'type': 'info', 'text': usage_text}
         if finished:
             assert len(response.choices) == 0
