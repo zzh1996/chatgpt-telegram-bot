@@ -475,7 +475,9 @@ async def reply_handler(message):
             return
 
     if photo_hash:
-        new_message = [{'type': 'text', 'text': text}, {'type': 'image', 'hash': photo_hash}]
+        new_message = [{'type': 'image', 'hash': photo_hash}]
+        if text:
+            new_message.append({'type': 'text', 'text': text})
     elif document_text:
         if text:
             new_message = document_text + '\n\n' + text
