@@ -23,10 +23,22 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'e$', 'model': 'ERNIE-4.0-8K-Preview-0518', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions_adv_pro'},
-    {'prefix': 'e-$', 'model': 'ERNIE-4.0-8K-Preview-0518 disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions_adv_pro'},
+    {'prefix': 'e$', 'model': 'ERNIE-4.0-Turbo-8K-Preview', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-turbo-8k-preview'},
+    {'prefix': 'e-$', 'model': 'ERNIE-4.0-Turbo-8K-Preview disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-turbo-8k-preview'},
+    {'prefix': 'ERNIE-4.0-Turbo-8K$', 'model': 'ERNIE-4.0-Turbo-8K', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-turbo-8k'},
+    {'prefix': 'ERNIE-4.0-Turbo-8K-$', 'model': 'ERNIE-4.0-Turbo-8K disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-turbo-8k'},
+    {'prefix': 'ERNIE-4.0-Turbo-8K-Preview$', 'model': 'ERNIE-4.0-Turbo-8K-Preview', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-turbo-8k-preview'},
+    {'prefix': 'ERNIE-4.0-Turbo-8K-Preview-$', 'model': 'ERNIE-4.0-Turbo-8K-Preview disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-turbo-8k-preview'},
+    {'prefix': 'ERNIE-4.0-8K$', 'model': 'ERNIE-4.0-8K', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions_pro'},
+    {'prefix': 'ERNIE-4.0-8K-$', 'model': 'ERNIE-4.0-8K disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions_pro'},
+    {'prefix': 'ERNIE-4.0-8K-Preview$', 'model': 'ERNIE-4.0-8K-Preview', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-preview'},
+    {'prefix': 'ERNIE-4.0-8K-Preview-$', 'model': 'ERNIE-4.0-8K-Preview disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-preview'},
+    {'prefix': 'ERNIE-4.0-8K-Latest$', 'model': 'ERNIE-4.0-8K-Latest', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-latest'},
+    {'prefix': 'ERNIE-4.0-8K-Latest-$', 'model': 'ERNIE-4.0-8K-Latest disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-latest'},
     {'prefix': 'ERNIE-4.0-8K-0329$', 'model': 'ERNIE-4.0-8K-0329', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-0329'},
     {'prefix': 'ERNIE-4.0-8K-0329-$', 'model': 'ERNIE-4.0-8K-0329 disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-0329'},
+    {'prefix': 'ERNIE-4.0-8K-0613$', 'model': 'ERNIE-4.0-8K-0613', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-0613'},
+    {'prefix': 'ERNIE-4.0-8K-0613-$', 'model': 'ERNIE-4.0-8K-0613 disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-0613'},
 ]
 DEFAULT_MODEL = 'ERNIE-4.0-8K-Preview-0518' # For compatibility with the old database format
 
