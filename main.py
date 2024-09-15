@@ -21,7 +21,7 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 
 ADMIN_ID = 71863318
 
-MODEL = 'gpt-4o'
+MODEL = 'chatgpt-4o-latest'
 
 aclient = openai.AsyncOpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
