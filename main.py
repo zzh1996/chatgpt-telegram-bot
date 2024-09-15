@@ -22,19 +22,22 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 's$$', 'model': 'gpt-3.5-turbo-0125'},
-    {'prefix': 's$', 'model': 'gpt-4o-2024-05-13'},
+    {'prefix': 's$', 'model': 'chatgpt-4o-latest'},
     {'prefix': 's4$', 'model': 'gpt-4-turbo-2024-04-09'},
-    {'prefix': 's4o$', 'model': 'gpt-4o-2024-05-13'},
+    {'prefix': 's4o$', 'model': 'gpt-4o-2024-08-06'},
     {'prefix': 's4om$', 'model': 'gpt-4o-mini-2024-07-18'},
 
-    {'prefix': 'sgpt-4o-2024-05-13$', 'model': 'gpt-4o-2024-05-13'},
-    {'prefix': 'sgpt-4o$', 'model': 'gpt-4o'},
+    {'prefix': 'sgpt-4o-mini-2024-07-18$', 'model': 'gpt-4o-mini-2024-07-18'},
     {'prefix': 'sgpt-4o-mini$', 'model': 'gpt-4o-mini'},
+
+    {'prefix': 'sgpt-4o-2024-05-13$', 'model': 'gpt-4o-2024-05-13'},
+    {'prefix': 'sgpt-4o-2024-08-06$', 'model': 'gpt-4o-2024-08-06'},
+    {'prefix': 'sgpt-4o$', 'model': 'gpt-4o'},
 
     {'prefix': 'sgpt-4-turbo-2024-04-09$', 'model': 'gpt-4-turbo-2024-04-09'},
     {'prefix': 'sgpt-4-0125-preview$', 'model': 'gpt-4-0125-preview'},
     {'prefix': 'sgpt-4-1106-preview$', 'model': 'gpt-4-1106-preview'},
-    {'prefix': 'sgpt-4-vision-preview$', 'model': 'gpt-4-vision-preview'},
+    {'prefix': 'sgpt-4-1106-vision-preview$', 'model': 'gpt-4-1106-vision-preview'},
     {'prefix': 'sgpt-4-0613$', 'model': 'gpt-4-0613'},
     {'prefix': 'sgpt-4-32k-0613$', 'model': 'gpt-4-32k-0613'},
 
