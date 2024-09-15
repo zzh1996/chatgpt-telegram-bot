@@ -26,7 +26,7 @@ GPT_35_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, base
 GPT_4_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2021-09\nCurrent date: {current_date}'
 GPT_4_PROMPT_2 = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2023-04\nCurrent date: {current_date}'
 GPT_4_TURBO_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2023-12\nCurrent date: {current_date}\n\nImage input capabilities: Enabled\nPersonality: v2'
-GPT_4O_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2023-10\nCurrent date: {current_date}\n\nImage input capabilities: Enabled\nPersonality: v2'
+GPT_4O_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2023-10\nCurrent date: {current_date}'
 
 MODELS = [
     {'prefix': '$', 'model': 'gpt-4o-2024-08-06', 'prompt_template': GPT_4O_PROMPT},
@@ -41,6 +41,9 @@ MODELS = [
     {'prefix': 'o1-preview-2024-09-12$', 'model': 'o1-preview-2024-09-12', 'prompt_template': ''},
     {'prefix': 'o1-mini$', 'model': 'o1-mini', 'prompt_template': ''},
     {'prefix': 'o1-mini-2024-09-12$', 'model': 'o1-mini-2024-09-12', 'prompt_template': ''},
+
+    {'prefix': 'chatgpt-4o-latest$', 'model': 'chatgpt-4o-latest', 'prompt_template': GPT_4O_PROMPT},
+    {'prefix': 'chatgpt$', 'model': 'chatgpt-4o-latest', 'prompt_template': GPT_4O_PROMPT},
 
     {'prefix': 'gpt-4o-mini-2024-07-18$', 'model': 'gpt-4o-mini-2024-07-18', 'prompt_template': GPT_4O_PROMPT},
     {'prefix': 'gpt-4o-mini$', 'model': 'gpt-4o-mini', 'prompt_template': GPT_4O_PROMPT},
@@ -368,7 +371,7 @@ async def get_whitelist_handler(message):
 async def list_models_handler(message):
     text = ''
     for m in MODELS:
-        text += f'Prefix: "{m["prefix"]}", model: {m["model"]}\n'
+        text += 'Prefix: "' + RichText.Code(m["prefix"]) + '", model: ' + RichText.Code(m["model"]) + '\n'
     await send_message(message.chat_id, text, message.id)
 
 @retry()
