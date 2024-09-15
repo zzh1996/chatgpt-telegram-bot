@@ -20,7 +20,9 @@ class Browsing:
                 },
             },
             "required": ["url"],
-        }
+            "additionalProperties": False,
+        },
+        "strict": True,
     }]
 
     def __init__(self):

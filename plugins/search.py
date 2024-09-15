@@ -17,7 +17,9 @@ class Search:
                 },
             },
             "required": ["query"],
-        }
+            "additionalProperties": False,
+        },
+        "strict": True,
     }]
 
     def __init__(self):

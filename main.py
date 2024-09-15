@@ -21,7 +21,7 @@ from plugins.youtube import Youtube
 from plugins.wolframalpha import WolframAlpha
 
 ADMIN_ID = 71863318
-DEFAULT_MODEL = "gpt-4o"
+DEFAULT_MODEL = "gpt-4o-2024-08-06"
 TRIGGER = 'p$'
 PLUGINS = [Search, Browsing, Youtube, Calculator, WolframAlpha]
 
@@ -194,6 +194,7 @@ async def completion(messages, model, chat_id, msg_id, functions, tool_choice=No
         'messages': messages,
         'stream': True,
         'tools': [{"type": "function", "function": f} for f in functions],
+        'parallel_tool_calls': False,
     }
     if tool_choice is not None:
         params['tool_choice'] = tool_choice

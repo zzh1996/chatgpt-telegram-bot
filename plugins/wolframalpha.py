@@ -16,7 +16,9 @@ class WolframAlpha:
                 },
             },
             "required": ["input"],
-        }
+            "additionalProperties": False,
+        },
+        "strict": True,
     }]
 
     def __init__(self):

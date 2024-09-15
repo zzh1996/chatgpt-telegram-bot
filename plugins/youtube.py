@@ -17,7 +17,9 @@ class Youtube:
                 },
             },
             "required": ["url"],
-        }
+            "additionalProperties": False,
+        },
+        "strict": True,
     }]
 
     sub_preferences_en = ['en', 'en-US', 'en-GB', 'en-AU', 'en-CA', 'en-IN', 'en-IE']

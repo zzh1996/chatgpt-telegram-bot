@@ -88,7 +88,9 @@ class Calculator:
                 },
             },
             "required": ["expr"],
-        }
+            "additionalProperties": False,
+        },
+        "strict": True,
     }]
 
     def calc(self, expr):
