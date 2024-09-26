@@ -27,8 +27,12 @@ MODELS = [
     {'prefix': 'l8$', 'model': 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo', 'prompt_template': ''},
     {'prefix': 'l3$', 'model': 'meta-llama/Meta-Llama-3-70B-Instruct-Turbo', 'prompt_template': ''},
     {'prefix': 'g2$', 'model': 'google/gemma-2-27b-it', 'prompt_template': ''},
+    {'prefix': 'lv$', 'model': 'meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo', 'prompt_template': ''},
+    {'prefix': 'lv11$', 'model': 'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo', 'prompt_template': ''},
+    {'prefix': 'l3b$', 'model': 'meta-llama/Llama-3.2-3B-Instruct-Turbo', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo' # For compatibility with the old database format
+VISION_MODEL = 'meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo'
 
 def get_prompt(model):
     for m in MODELS:
@@ -192,12 +196,14 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                         if obj['type'] == 'image_url':
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
-    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
+    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r): %s', chat_id, msg_id, task_id, model, remove_image(messages))
     stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
-        assert not finished
+        if finished:
+            assert len(response.choices) == 0
+            continue
         obj = response.choices[0]
         if obj.delta.role is not None:
             if obj.delta.role != 'assistant':
@@ -259,7 +265,7 @@ def construct_chat_history(chat_id, msg_id):
     if len(messages) % 2 != 1:
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
         return None, None
-    return messages[::-1], model
+    return messages[::-1], model, has_image
 
 @only_admin
 async def add_whitelist_handler(message):
@@ -446,9 +452,6 @@ async def reply_handler(message):
     photo_message = message if message.photo is not None else extra_photo_message
     photo_hash = None
     if photo_message is not None:
-        await send_message(chat_id, '[!] Error: Images are not supported', msg_id)
-        return
-
         if photo_message.grouped_id is not None:
             await send_message(chat_id, '[!] Error: Grouped photos are not yet supported, but will be supported soon', msg_id)
             return
@@ -473,7 +476,9 @@ async def reply_handler(message):
             return
 
     if photo_hash:
-        new_message = [{'type': 'text', 'text': text}, {'type': 'image', 'hash': photo_hash}]
+        new_message = [{'type': 'image', 'hash': photo_hash}]
+        if text:
+            new_message.append({'type': 'text', 'text': text})
     elif document_text:
         if text:
             new_message = document_text + '\n\n' + text
@@ -484,7 +489,7 @@ async def reply_handler(message):
 
     db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, None)
 
-    chat_history, model = construct_chat_history(chat_id, msg_id)
+    chat_history, model, has_image = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
         await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id)
         return
@@ -492,6 +497,8 @@ async def reply_handler(message):
     models = models if models is not None else [model]
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
+            if 'Vision' not in m and has_image:
+                m = VISION_MODEL
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
             await asyncio.sleep(3)
 
