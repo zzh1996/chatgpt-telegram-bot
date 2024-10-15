@@ -22,7 +22,9 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'y$', 'model': 'yi-large', 'prompt_template': ''},
+    {'prefix': 'y$', 'model': 'yi-lightning', 'prompt_template': ''},
+    {'prefix': 'yi-lightning$', 'model': 'yi-lightning', 'prompt_template': ''},
+    {'prefix': 'yi-large$', 'model': 'yi-large', 'prompt_template': ''},
     {'prefix': 'yi-medium-200k$', 'model': 'yi-medium-200k', 'prompt_template': ''},
     {'prefix': 'yi-medium$', 'model': 'yi-medium', 'prompt_template': ''},
     {'prefix': 'yi-spark$', 'model': 'yi-spark', 'prompt_template': ''},
