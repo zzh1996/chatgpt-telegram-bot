@@ -22,17 +22,10 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'l$', 'model': 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'l70$', 'model': 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'l8$', 'model': 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'l3$', 'model': 'meta-llama/Meta-Llama-3-70B-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'g2$', 'model': 'google/gemma-2-27b-it', 'prompt_template': ''},
-    {'prefix': 'lv$', 'model': 'meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'lv11$', 'model': 'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'l3b$', 'model': 'meta-llama/Llama-3.2-3B-Instruct-Turbo', 'prompt_template': ''},
+    {'prefix': 'x$', 'model': 'grok-beta', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo' # For compatibility with the old database format
-VISION_MODEL = 'meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo'
+DEFAULT_MODEL = 'grok-beta' # For compatibility with the old database format
+VISION_MODEL = 'grok-beta'
 
 def get_prompt(model):
     for m in MODELS:
@@ -41,8 +34,8 @@ def get_prompt(model):
     raise ValueError('Model not found')
 
 aclient = openai.AsyncOpenAI(
-    api_key=os.getenv("TOGETHER_API_KEY"),
-    base_url="https://api.together.xyz/v1",
+    api_key=os.getenv("XAI_API_KEY"),
+    base_url="https://api.x.ai/v1",
     max_retries=0,
     timeout=15,
 )
@@ -217,7 +210,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 finish_reason = obj.finish_details['type']
             if finish_reason == 'length':
                 yield '\n\n[!] Error: Output truncated due to limit'
-            elif finish_reason == 'eos' or finish_reason == 'stop':
+            elif finish_reason == 'stop':
                 pass
             elif finish_reason is not None:
                 if obj.finish_reason is not None:
@@ -497,16 +490,15 @@ async def reply_handler(message):
     models = models if models is not None else [model]
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
-            if 'Vision' not in m and has_image:
+            if has_image:
                 m = VISION_MODEL
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
-            await asyncio.sleep(3)
 
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
     error_cnt = 0
     while True:
         reply = ''
-        async with BotReplyMessages(chat_id, msg_id, f'[{model.split("/")[-1]}] ') as replymsgs:
+        async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
                 first_update_timestamp = None
