@@ -28,6 +28,8 @@ MODELS = [
     {'prefix': 'gf$', 'model': 'gemini-1.5-flash-002'},
     {'prefix': 'g1$', 'model': 'gemini-1.0-pro-latest', 'vision_model': 'gemini-pro-vision'},
 
+    {'prefix': 'gemini-exp-1114$', 'model': 'gemini-exp-1114'},
+
     {'prefix': 'gemini-1.5-pro-latest$', 'model': 'gemini-1.5-pro-latest'},
     {'prefix': 'gemini-1.5-pro$', 'model': 'gemini-1.5-pro'},
     {'prefix': 'gemini-1.5-pro-001$', 'model': 'gemini-1.5-pro-001'},
