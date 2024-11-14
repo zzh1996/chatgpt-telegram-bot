@@ -478,9 +478,9 @@ async def reply_handler(message):
             new_message.append({'type': 'text', 'text': text})
     elif document_text:
         if text:
-            new_message = document_text + '\n\n' + text
+            new_message = [{'type': 'text', 'text': document_text + '\n\n' + text}]
         else:
-            new_message = document_text
+            new_message = [{'type': 'text', 'text': document_text}]
     else:
         new_message = [{'type': 'text', 'text': text}]
 
