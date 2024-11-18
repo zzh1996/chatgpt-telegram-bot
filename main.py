@@ -238,15 +238,13 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r): %s', chat_id, msg_id, task_id, model, remove_image(messages))
 
     if model.startswith('o1-'):
-        async with bot.action(chat_id, 'typing'):
-            single_response = await aclient.chat.completions.create(
-                model=model,
-                messages=messages,
-                timeout=httpx.Timeout(timeout=600, connect=15),
-            )
-        async def to_aiter(x):
-            yield x
-        stream = to_aiter(single_response)
+        stream = await aclient.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            stream_options={"include_usage": True},
+            timeout=httpx.Timeout(timeout=600, connect=15),
+        )
     else:
         stream = await aclient.chat.completions.create(
             model=model,
