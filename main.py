@@ -23,9 +23,10 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 'x$', 'model': 'grok-beta', 'prompt_template': ''},
+    {'prefix': 'grok-vision-beta$', 'model': 'grok-vision-beta', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'grok-beta' # For compatibility with the old database format
-VISION_MODEL = 'grok-beta'
+VISION_MODEL = 'grok-vision-beta'
 
 def get_prompt(model):
     for m in MODELS:
