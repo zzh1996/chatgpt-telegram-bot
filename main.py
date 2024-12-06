@@ -30,6 +30,8 @@ MODELS = [
     {'prefix': 'lv$', 'model': 'meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo', 'prompt_template': ''},
     {'prefix': 'lv11$', 'model': 'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo', 'prompt_template': ''},
     {'prefix': 'l3b$', 'model': 'meta-llama/Llama-3.2-3B-Instruct-Turbo', 'prompt_template': ''},
+    {'prefix': 'l33$', 'model': 'meta-llama/Llama-3.3-70B-Instruct-Turbo', 'prompt_template': ''},
+    {'prefix': 'nv$', 'model': 'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo' # For compatibility with the old database format
 VISION_MODEL = 'meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo'
