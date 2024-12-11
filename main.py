@@ -26,7 +26,7 @@ MODELS = [
     {'prefix': 'l70$', 'model': 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo', 'prompt_template': ''},
     {'prefix': 'l8$', 'model': 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo', 'prompt_template': ''},
     {'prefix': 'l3$', 'model': 'meta-llama/Meta-Llama-3-70B-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'g2$', 'model': 'google/gemma-2-27b-it', 'prompt_template': ''},
+    {'prefix': 'ge$', 'model': 'google/gemma-2-27b-it', 'prompt_template': ''},
     {'prefix': 'lv$', 'model': 'meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo', 'prompt_template': ''},
     {'prefix': 'lv11$', 'model': 'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo', 'prompt_template': ''},
     {'prefix': 'l3b$', 'model': 'meta-llama/Llama-3.2-3B-Instruct-Turbo', 'prompt_template': ''},
