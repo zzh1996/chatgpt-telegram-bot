@@ -22,11 +22,13 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'x$', 'model': 'grok-beta', 'prompt_template': ''},
+    {'prefix': 'x$', 'model': 'grok-2-1212', 'prompt_template': ''},
+    {'prefix': 'grok-beta$', 'model': 'grok-beta', 'prompt_template': ''},
     {'prefix': 'grok-vision-beta$', 'model': 'grok-vision-beta', 'prompt_template': ''},
+    {'prefix': 'grok-2-vision-1212$', 'model': 'grok-2-vision-1212', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'grok-beta' # For compatibility with the old database format
-VISION_MODEL = 'grok-vision-beta'
+VISION_MODEL = 'grok-2-vision-1212'
 
 def get_prompt(model):
     for m in MODELS:
