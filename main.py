@@ -34,13 +34,15 @@ MODELS = [
     {'prefix': '4om$', 'model': 'gpt-4o-mini-2024-07-18', 'prompt_template': GPT_4O_PROMPT},
     {'prefix': '4$', 'model': 'gpt-4-turbo-2024-04-09', 'prompt_template': GPT_4_TURBO_PROMPT},
     {'prefix': '3$', 'model': 'gpt-3.5-turbo-0125', 'prompt_template': GPT_35_PROMPT},
-    {'prefix': 'o1$', 'model': 'o1-preview', 'prompt_template': ''},
+    {'prefix': 'o1$', 'model': 'o1', 'prompt_template': ''},
     {'prefix': 'o1m$', 'model': 'o1-mini', 'prompt_template': ''},
+    {'prefix': 'o1p$', 'model': 'o1-preview', 'prompt_template': ''},
 
     {'prefix': 'o1-preview$', 'model': 'o1-preview', 'prompt_template': ''},
     {'prefix': 'o1-preview-2024-09-12$', 'model': 'o1-preview-2024-09-12', 'prompt_template': ''},
     {'prefix': 'o1-mini$', 'model': 'o1-mini', 'prompt_template': ''},
     {'prefix': 'o1-mini-2024-09-12$', 'model': 'o1-mini-2024-09-12', 'prompt_template': ''},
+    {'prefix': 'o1-2024-12-17$', 'model': 'o1-2024-12-17', 'prompt_template': ''},
 
     {'prefix': 'chatgpt-4o-latest$', 'model': 'chatgpt-4o-latest', 'prompt_template': GPT_4O_PROMPT},
     {'prefix': 'chatgpt$', 'model': 'chatgpt-4o-latest', 'prompt_template': GPT_4O_PROMPT},
@@ -69,6 +71,8 @@ MODELS = [
 DEFAULT_MODEL = 'gpt-4-0613' # For compatibility with the old database format
 
 PRICING = {
+    'o1': (15e-6, 60e-6),
+    'o1-2024-12-17': (15e-6, 60e-6),
     'o1-preview': (15e-6, 60e-6),
     'o1-preview-2024-09-12': (15e-6, 60e-6),
     'o1-mini': (3e-6, 12e-6),
@@ -245,6 +249,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             stream=True,
             stream_options={"include_usage": True},
             timeout=httpx.Timeout(timeout=600, connect=15),
+            reasoning_effort='high',
         )
     else:
         stream = await aclient.chat.completions.create(
