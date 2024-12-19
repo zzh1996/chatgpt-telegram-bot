@@ -30,10 +30,15 @@ MODELS = [
 
     {'prefix': 'g2$', 'model': 'gemini-2.0-flash-exp'},
 
+    {'prefix': 'gt$', 'model': 'gemini-2.0-flash-thinking-exp-1219'},
+
     {'prefix': 'gemini-exp-1114$', 'model': 'gemini-exp-1114'},
     {'prefix': 'gemini-exp-1121$', 'model': 'gemini-exp-1121'},
     {'prefix': 'gemini-exp-1206$', 'model': 'gemini-exp-1206'},
     {'prefix': 'learnlm-1.5-pro-experimental$', 'model': 'learnlm-1.5-pro-experimental'},
+
+    {'prefix': 'gemini-2.0-flash-exp$', 'model': 'gemini-2.0-flash-exp'},
+    {'prefix': 'gemini-2.0-flash-thinking-exp-1219$', 'model': 'gemini-2.0-flash-thinking-exp-1219'},
 
     {'prefix': 'gemini-1.5-pro-latest$', 'model': 'gemini-1.5-pro-latest'},
     {'prefix': 'gemini-1.5-pro$', 'model': 'gemini-1.5-pro'},
@@ -215,7 +220,10 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         "HARM_CATEGORY_SEXUALLY_EXPLICIT",
         "HARM_CATEGORY_DANGEROUS_CONTENT",
     ]]
-    stream = await genai.GenerativeModel(model).generate_content_async(
+    generation_config = {
+        "response_mime_type": "text/plain",
+    }
+    stream = await genai.GenerativeModel(model, generation_config=generation_config).generate_content_async(
         messages,
         stream=True,
         safety_settings=safety_settings,
