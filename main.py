@@ -241,15 +241,24 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r): %s', chat_id, msg_id, task_id, model, remove_image(messages))
-
-    if model.startswith('o1-'):
+    if model == 'o1':
+        async with bot.action(chat_id, 'typing'):
+            single_response = await aclient.chat.completions.create(
+                model=model,
+                messages=messages,
+                timeout=httpx.Timeout(timeout=600, connect=15),
+                reasoning_effort='high',
+            )
+            async def to_aiter(x):
+                yield x
+            stream = to_aiter(single_response)
+    elif model.startswith('o1-'):
         stream = await aclient.chat.completions.create(
             model=model,
             messages=messages,
             stream=True,
             stream_options={"include_usage": True},
             timeout=httpx.Timeout(timeout=600, connect=15),
-            reasoning_effort='high',
         )
     else:
         stream = await aclient.chat.completions.create(
@@ -261,7 +270,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
-        if model.startswith('o1-') and response.usage is not None:
+        if model.startswith('o1') and response.usage is not None:
             usage_text = f"Prompt tokens: {response.usage.prompt_tokens}\n"
             if response.usage.completion_tokens_details is not None:
                 if response.usage.completion_tokens_details.reasoning_tokens is not None:
