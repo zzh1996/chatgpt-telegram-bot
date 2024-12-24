@@ -246,7 +246,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             single_response = await aclient.chat.completions.create(
                 model=model,
                 messages=messages,
-                timeout=httpx.Timeout(timeout=600, connect=15),
+                timeout=httpx.Timeout(timeout=3600, connect=15),
                 reasoning_effort='high',
             )
             async def to_aiter(x):
@@ -258,7 +258,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             messages=messages,
             stream=True,
             stream_options={"include_usage": True},
-            timeout=httpx.Timeout(timeout=600, connect=15),
+            timeout=httpx.Timeout(timeout=3600, connect=15),
         )
     else:
         stream = await aclient.chat.completions.create(
