@@ -26,6 +26,7 @@ ADMIN_ID = 71863318
 MODELS = [
     {'prefix': 'z$', 'model': 'glm-4-plus', 'prompt_template': ''},
     {'prefix': 'z-$', 'model': 'glm-4-plus disable_search', 'prompt_template': ''},
+    {'prefix': 'zz$', 'model': 'glm-zero-preview', 'prompt_template': ''},
     {'prefix': 'glm-4-0520$', 'model': 'glm-4-0520', 'prompt_template': ''},
     {'prefix': 'glm-4-0520-$', 'model': 'glm-4-0520 disable_search', 'prompt_template': ''},
     {'prefix': 'glm-4$', 'model': 'glm-4', 'prompt_template': ''},
