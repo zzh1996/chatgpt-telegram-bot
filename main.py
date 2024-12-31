@@ -22,13 +22,17 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'x$', 'model': 'grok-2-1212', 'prompt_template': ''},
-    {'prefix': 'grok-beta$', 'model': 'grok-beta', 'prompt_template': ''},
-    {'prefix': 'grok-vision-beta$', 'model': 'grok-vision-beta', 'prompt_template': ''},
-    {'prefix': 'grok-2-vision-1212$', 'model': 'grok-2-vision-1212', 'prompt_template': ''},
+    {'prefix': 'db$', 'model': 'doubao-pro-32k-241215', 'prompt_template': ''},
+    {'prefix': 'doubao-pro-32k-241215$', 'model': 'doubao-pro-32k-241215', 'prompt_template': ''},
+    {'prefix': 'doubao-vision-pro-32k-241028$', 'model': 'doubao-vision-pro-32k-241028', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'grok-beta' # For compatibility with the old database format
-VISION_MODEL = 'grok-2-vision-1212'
+DEFAULT_MODEL = 'doubao-pro-32k-241215' # For compatibility with the old database format
+VISION_MODEL = 'doubao-vision-pro-32k-241028'
+
+ENDPOINTS = {
+    'doubao-pro-32k-241215': 'ep-20241231160004-6tfvx',
+    'doubao-vision-pro-32k-241028': 'ep-20241231160142-x2txx',
+}
 
 def get_prompt(model):
     for m in MODELS:
@@ -37,8 +41,8 @@ def get_prompt(model):
     raise ValueError('Model not found')
 
 aclient = openai.AsyncOpenAI(
-    api_key=os.getenv("XAI_API_KEY"),
-    base_url="https://api.x.ai/v1",
+    api_key=os.getenv("ARK_API_KEY"),
+    base_url="https://ark.cn-beijing.volces.com/api/v3",
     max_retries=0,
     timeout=15,
 )
@@ -193,7 +197,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r): %s', chat_id, msg_id, task_id, model, remove_image(messages))
-    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
+    stream = await aclient.chat.completions.create(model=ENDPOINTS[model], messages=messages, stream=True)
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
