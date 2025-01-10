@@ -50,6 +50,7 @@ MODELS = [
     {'prefix': 'qwen-coder-turbo-latest$', 'model': 'qwen-coder-turbo-latest', 'prompt_template': ''},
 
     {'prefix': 'qwq$', 'model': 'qwq-32b-preview', 'prompt_template': ''},
+    {'prefix': 'qvq$', 'model': 'qvq-72b-preview', 'prompt_template': ''},
     {'prefix': 'qwen25$', 'model': 'qwen2.5-72b-instruct', 'prompt_template': ''},
     {'prefix': 'qwen25m$', 'model': 'qwen2.5-math-72b-instruct', 'prompt_template': ''},
     {'prefix': 'qwen25c$', 'model': 'qwen2.5-coder-32b-instruct', 'prompt_template': ''},
@@ -59,6 +60,7 @@ MODELS = [
 ]
 DEFAULT_MODEL = 'qwen-max-0428' # For compatibility with the old database format
 VISION_MODEL = 'qwen-vl-max-latest'
+VISION_REASONING_MODEL = 'qvq-72b-preview'
 
 def get_prompt(model):
     for m in MODELS:
@@ -526,7 +528,10 @@ async def reply_handler(message):
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
             if has_image:
-                m = VISION_MODEL
+                if m.startswith('qwq') or m.startswith('qvq'):
+                    m = VISION_REASONING_MODEL
+                else:
+                    m = VISION_MODEL
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
