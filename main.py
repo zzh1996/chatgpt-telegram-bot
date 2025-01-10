@@ -23,16 +23,10 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 'y$', 'model': 'yi-lightning', 'prompt_template': ''},
-    {'prefix': 'yi-lightning$', 'model': 'yi-lightning', 'prompt_template': ''},
-    {'prefix': 'yi-large$', 'model': 'yi-large', 'prompt_template': ''},
-    {'prefix': 'yi-medium-200k$', 'model': 'yi-medium-200k', 'prompt_template': ''},
-    {'prefix': 'yi-medium$', 'model': 'yi-medium', 'prompt_template': ''},
-    {'prefix': 'yi-spark$', 'model': 'yi-spark', 'prompt_template': ''},
-    {'prefix': 'yi-large-turbo$', 'model': 'yi-large-turbo', 'prompt_template': ''},
-    {'prefix': 'yi-vision$', 'model': 'yi-vision', 'prompt_template': ''},
+    {'prefix': 'yi-vision-v2$', 'model': 'yi-vision-v2', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'yi-large' # For compatibility with the old database format
-VISION_MODEL = 'yi-vision'
+DEFAULT_MODEL = 'yi-lightning' # For compatibility with the old database format
+VISION_MODEL = 'yi-vision-v2'
 
 def get_prompt(model):
     for m in MODELS:
@@ -211,7 +205,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 raise ValueError("Role error")
         if obj.delta.content is not None:
             yield obj.delta.content
-        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
+        if (obj.finish_reason is not None and obj.finish_reason != '') or ('finish_details' in obj.model_extra and obj.finish_details is not None):
             finish_reason = obj.finish_reason
             if 'finish_details' in obj.model_extra and obj.finish_details is not None:
                 assert finish_reason is None
