@@ -26,8 +26,12 @@ MODELS = [
     {'prefix': 'moonshot-v1-8k$', 'model': 'moonshot-v1-8k', 'prompt_template': ''},
     {'prefix': 'moonshot-v1-32k$', 'model': 'moonshot-v1-32k', 'prompt_template': ''},
     {'prefix': 'moonshot-v1-128k$', 'model': 'moonshot-v1-128k', 'prompt_template': ''},
+    {'prefix': 'moonshot-v1-8k-vision-preview$', 'model': 'moonshot-v1-8k-vision-preview', 'prompt_template': ''},
+    {'prefix': 'moonshot-v1-32k-vision-preview$', 'model': 'moonshot-v1-32k-vision-preview', 'prompt_template': ''},
+    {'prefix': 'moonshot-v1-128k-vision-preview$', 'model': 'moonshot-v1-128k-vision-preview', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'moonshot-v1-8k' # For compatibility with the old database format
+VISION_MODEL = 'moonshot-v1-8k-vision-preview'
 
 def get_prompt(model):
     for m in MODELS:
@@ -192,7 +196,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
-    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, temperature=0.3, max_tokens=2048 if model == DEFAULT_MODEL else 8192)
+    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, temperature=0.3, max_tokens=2048 if '-8k' in model else 8192)
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
@@ -258,7 +262,7 @@ def construct_chat_history(chat_id, msg_id):
     if len(messages) % 2 != 1:
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
         return None, None
-    return messages[::-1], model
+    return messages[::-1], model, has_image
 
 @only_admin
 async def add_whitelist_handler(message):
@@ -445,9 +449,6 @@ async def reply_handler(message):
     photo_message = message if message.photo is not None else extra_photo_message
     photo_hash = None
     if photo_message is not None:
-        await send_message(chat_id, '[!] Error: Images are not supported', msg_id)
-        return
-
         if photo_message.grouped_id is not None:
             await send_message(chat_id, '[!] Error: Grouped photos are not yet supported, but will be supported soon', msg_id)
             return
@@ -472,7 +473,9 @@ async def reply_handler(message):
             return
 
     if photo_hash:
-        new_message = [{'type': 'text', 'text': text}, {'type': 'image', 'hash': photo_hash}]
+        new_message = [{'type': 'image', 'hash': photo_hash}]
+        if text:
+            new_message.append({'type': 'text', 'text': text})
     elif document_text:
         if text:
             new_message = document_text + '\n\n' + text
@@ -483,7 +486,7 @@ async def reply_handler(message):
 
     db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, None)
 
-    chat_history, model = construct_chat_history(chat_id, msg_id)
+    chat_history, model, has_image = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
         await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id)
         return
@@ -491,6 +494,8 @@ async def reply_handler(message):
     models = models if models is not None else [model]
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
+            if has_image and 'vision' not in m:
+                m = VISION_MODEL
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
