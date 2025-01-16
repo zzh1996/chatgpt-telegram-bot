@@ -23,7 +23,9 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'a$', 'model': 'abab6.5-chat', 'prompt_template': ''},
+    {'prefix': 'a$', 'model': 'MiniMax-Text-01', 'prompt_template': ''},
+    {'prefix': 'MiniMax-Text-01$', 'model': 'MiniMax-Text-01', 'prompt_template': ''},
+    {'prefix': 'abab6.5-chat$', 'model': 'abab6.5-chat', 'prompt_template': ''},
     {'prefix': 'abab6.5s-chat$', 'model': 'abab6.5s-chat', 'prompt_template': ''},
     {'prefix': 'abab6.5g-chat$', 'model': 'abab6.5g-chat', 'prompt_template': ''},
     {'prefix': 'abab6-chat$', 'model': 'abab6-chat', 'prompt_template': ''},
@@ -70,7 +72,7 @@ class MiniMax:
                     'model': model,
                     'messages': messages,
                     'stream': True,
-                    'max_tokens': 2048,
+                    'max_tokens': 8192,
                 }
             ) as response:
                 if response.status != 200:
