@@ -24,6 +24,7 @@ ADMIN_ID = 71863318
 MODELS = [
     {'prefix': 'd$', 'model': 'deepseek-chat', 'prompt_template': ''},
     {'prefix': 'dc$', 'model': 'deepseek-coder', 'prompt_template': ''},
+    {'prefix': 'dr$', 'model': 'deepseek-reasoner', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'deepseek-chat' # For compatibility with the old database format
 
@@ -200,7 +201,9 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             if obj.delta.role != 'assistant':
                 raise ValueError("Role error")
         if obj.delta.content is not None:
-            yield obj.delta.content
+            yield {'type': 'text', 'text': obj.delta.content}
+        if 'reasoning_content' in obj.delta.model_extra and obj.delta.reasoning_content is not None:
+            yield {'type': 'reasoning', 'text': obj.delta.reasoning_content}
         if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
             assert all(item is None for item in [
                 obj.delta.content,
@@ -213,14 +216,14 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 assert finish_reason is None
                 finish_reason = obj.finish_details['type']
             if finish_reason == 'length':
-                yield '\n\n[!] Error: Output truncated due to limit'
+                yield {'type': 'error', 'text': '[!] Error: Output truncated due to limit\n'}
             elif finish_reason == 'stop':
                 pass
             elif finish_reason is not None:
                 if obj.finish_reason is not None:
-                    yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
+                    yield {'type': 'error', 'text': f'[!] Error: finish_reason="{finish_reason}"\n'}
                 else:
-                    yield f'\n\n[!] Error: finish_details="{obj.finish_details}"'
+                    yield {'type': 'error', 'text': f'[!] Error: finish_details="{obj.finish_details}"\n'}
             finished = True
 
 def construct_chat_history(chat_id, msg_id):
@@ -497,21 +500,43 @@ async def reply_handler(message):
         for task_id, m in enumerate(models):
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
+def render_reply(reply, info, error, reasoning, is_generating):
+    result = RichText.from_markdown(reply)
+    if reasoning:
+        result = RichText.Quote(reasoning, True) + '\n' + result
+    if info:
+        result += '\n' + RichText.Quote(info)
+    if error:
+        result += '\n' + RichText.Quote(RichText.Bold(error))
+    if is_generating:
+        result += '\n' + RichText.Italic('[!Generating...]')
+    return result
+
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
     error_cnt = 0
     while True:
         reply = ''
+        info = ''
+        error = ''
+        reasoning = ''
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
                 first_update_timestamp = None
                 async for delta in stream:
-                    reply += delta
+                    if delta['type'] == 'text':
+                        reply += delta['text']
+                    elif delta['type'] == 'error':
+                        error += delta['text']
+                    elif delta['type'] == 'info':
+                        info += delta['text']
+                    elif delta['type'] == 'reasoning':
+                        reasoning += delta['text']
                     if first_update_timestamp is None:
                         first_update_timestamp = time.time()
                     if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
-                        await replymsgs.update(RichText.from_markdown(reply) + ' [!Generating...]')
-                await replymsgs.update(RichText.from_markdown(reply))
+                        await replymsgs.update(render_reply(reply, info, error, reasoning, True))
+                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
                     db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
@@ -520,12 +545,10 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, model=%r, task_id=%r, cnt=%r): %s', chat_id, msg_id, model, task_id, error_cnt, e)
                 will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
-                error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
+                error += f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}\n'
                 if will_retry:
-                    error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
-                if reply:
-                    error_msg = reply + '\n\n' + error_msg
-                await replymsgs.update(error_msg)
+                    error += f'Retrying ({error_cnt}/{OPENAI_MAX_RETRY})...\n'
+                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 if will_retry:
                     await asyncio.sleep(OPENAI_RETRY_INTERVAL)
                 if not will_retry:
