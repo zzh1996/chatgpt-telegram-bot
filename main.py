@@ -22,16 +22,21 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'db$', 'model': 'doubao-pro-32k-241215', 'prompt_template': ''},
+    {'prefix': 'db$', 'model': 'doubao-1.5-pro-32k-250115', 'prompt_template': ''},
+    {'prefix': 'doubao-1.5-pro-32k-250115$', 'model': 'doubao-1.5-pro-32k-250115', 'prompt_template': ''},
+    {'prefix': 'db1$', 'model': 'doubao-pro-32k-241215', 'prompt_template': ''},
     {'prefix': 'doubao-pro-32k-241215$', 'model': 'doubao-pro-32k-241215', 'prompt_template': ''},
     {'prefix': 'doubao-vision-pro-32k-241028$', 'model': 'doubao-vision-pro-32k-241028', 'prompt_template': ''},
+    {'prefix': 'doubao-1.5-vision-pro-32k-250115$', 'model': 'doubao-1.5-vision-pro-32k-250115', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'doubao-pro-32k-241215' # For compatibility with the old database format
-VISION_MODEL = 'doubao-vision-pro-32k-241028'
+VISION_MODEL = 'doubao-1.5-vision-pro-32k-250115'
 
 ENDPOINTS = {
     'doubao-pro-32k-241215': 'ep-20241231160004-6tfvx',
     'doubao-vision-pro-32k-241028': 'ep-20241231160142-x2txx',
+    'doubao-1.5-pro-32k-250115': 'ep-20250122145259-jnv6g',
+    'doubao-1.5-vision-pro-32k-250115': 'ep-20250122145437-6xqbf',
 }
 
 def get_prompt(model):
