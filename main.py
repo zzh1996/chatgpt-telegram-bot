@@ -30,7 +30,7 @@ MODELS = [
 
     {'prefix': 'g2$', 'model': 'gemini-2.0-flash-exp'},
 
-    {'prefix': 'gt$', 'model': 'gemini-2.0-flash-thinking-exp-1219'},
+    {'prefix': 'gt$', 'model': 'gemini-2.0-flash-thinking-exp-01-21'},
 
     {'prefix': 'gemini-exp-1114$', 'model': 'gemini-exp-1114'},
     {'prefix': 'gemini-exp-1121$', 'model': 'gemini-exp-1121'},
@@ -39,6 +39,7 @@ MODELS = [
 
     {'prefix': 'gemini-2.0-flash-exp$', 'model': 'gemini-2.0-flash-exp'},
     {'prefix': 'gemini-2.0-flash-thinking-exp-1219$', 'model': 'gemini-2.0-flash-thinking-exp-1219'},
+    {'prefix': 'gemini-2.0-flash-thinking-exp-01-21$', 'model': 'gemini-2.0-flash-thinking-exp-01-21'},
 
     {'prefix': 'gemini-1.5-pro-latest$', 'model': 'gemini-1.5-pro-latest'},
     {'prefix': 'gemini-1.5-pro$', 'model': 'gemini-1.5-pro'},
