@@ -225,6 +225,8 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 else:
                     yield {'type': 'error', 'text': f'[!] Error: finish_details="{obj.finish_details}"\n'}
             finished = True
+    if not finished:
+        raise ValueError("Incomplete response")
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
@@ -503,7 +505,7 @@ async def reply_handler(message):
 def render_reply(reply, info, error, reasoning, is_generating):
     result = RichText.from_markdown(reply)
     if reasoning:
-        result = RichText.Quote(reasoning, True) + '\n' + result
+        result = RichText.Quote(reasoning, not is_generating) + '\n' + result
     if info:
         result += '\n' + RichText.Quote(info)
     if error:
