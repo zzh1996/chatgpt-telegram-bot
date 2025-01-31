@@ -37,12 +37,15 @@ MODELS = [
     {'prefix': 'o1$', 'model': 'o1', 'prompt_template': ''},
     {'prefix': 'o1m$', 'model': 'o1-mini', 'prompt_template': ''},
     {'prefix': 'o1p$', 'model': 'o1-preview', 'prompt_template': ''},
+    {'prefix': 'o3m$', 'model': 'o3-mini', 'prompt_template': ''},
 
     {'prefix': 'o1-preview$', 'model': 'o1-preview', 'prompt_template': ''},
     {'prefix': 'o1-preview-2024-09-12$', 'model': 'o1-preview-2024-09-12', 'prompt_template': ''},
     {'prefix': 'o1-mini$', 'model': 'o1-mini', 'prompt_template': ''},
     {'prefix': 'o1-mini-2024-09-12$', 'model': 'o1-mini-2024-09-12', 'prompt_template': ''},
     {'prefix': 'o1-2024-12-17$', 'model': 'o1-2024-12-17', 'prompt_template': ''},
+    {'prefix': 'o3-mini$', 'model': 'o3-mini', 'prompt_template': ''},
+    {'prefix': 'o3-mini-2025-01-31$', 'model': 'o3-mini-2025-01-31', 'prompt_template': ''},
 
     {'prefix': 'chatgpt-4o-latest$', 'model': 'chatgpt-4o-latest', 'prompt_template': GPT_4O_PROMPT},
     {'prefix': 'chatgpt$', 'model': 'chatgpt-4o-latest', 'prompt_template': GPT_4O_PROMPT},
@@ -75,8 +78,10 @@ PRICING = {
     'o1-2024-12-17': (15e-6, 60e-6),
     'o1-preview': (15e-6, 60e-6),
     'o1-preview-2024-09-12': (15e-6, 60e-6),
-    'o1-mini': (3e-6, 12e-6),
-    'o1-mini-2024-09-12': (3e-6, 12e-6),
+    'o1-mini': (1.1e-6, 4.4e-6),
+    'o1-mini-2024-09-12': (1.1e-6, 4.4e-6),
+    'o3-mini': (1.1e-6, 4.4e-6),
+    'o3-mini-2025-01-31': (1.1e-6, 4.4e-6),
 }
 
 def get_prompt(model):
@@ -260,6 +265,15 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             stream_options={"include_usage": True},
             timeout=httpx.Timeout(timeout=3600, connect=15),
         )
+    elif model.startswith('o3-'):
+        stream = await aclient.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            stream_options={"include_usage": True},
+            timeout=httpx.Timeout(timeout=3600, connect=15),
+            reasoning_effort='high',
+        )
     else:
         stream = await aclient.chat.completions.create(
             model=model,
@@ -270,7 +284,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
-        if model.startswith('o1') and response.usage is not None:
+        if (model.startswith('o1') or model.startswith('o3')) and response.usage is not None:
             usage_text = f"Prompt tokens: {response.usage.prompt_tokens}\n"
             if response.usage.completion_tokens_details is not None:
                 if response.usage.completion_tokens_details.reasoning_tokens is not None:
