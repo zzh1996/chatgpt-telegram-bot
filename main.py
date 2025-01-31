@@ -22,11 +22,13 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'y$', 'model': 'yi-lightning', 'prompt_template': ''},
-    {'prefix': 'yi-vision-v2$', 'model': 'yi-vision-v2', 'prompt_template': ''},
+    {'prefix': 'sp$', 'model': 'sonar-pro', 'prompt_template': ''},
+    {'prefix': 'sr$', 'model': 'sonar-reasoning', 'prompt_template': ''},
+    {'prefix': 'sonar$', 'model': 'sonar', 'prompt_template': ''},
+    {'prefix': 'sonar-pro$', 'model': 'sonar-pro', 'prompt_template': ''},
+    {'prefix': 'sonar-reasoning$', 'model': 'sonar-reasoning', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'yi-lightning' # For compatibility with the old database format
-VISION_MODEL = 'yi-vision-v2'
+DEFAULT_MODEL = 'sonar-pro' # For compatibility with the old database format
 
 def get_prompt(model):
     for m in MODELS:
@@ -35,8 +37,8 @@ def get_prompt(model):
     raise ValueError('Model not found')
 
 aclient = openai.AsyncOpenAI(
-    base_url='https://api.lingyiwanwu.com/v1',
-    api_key=os.getenv("YI_API_KEY"),
+    base_url='https://api.perplexity.ai',
+    api_key=os.getenv("PERPLEXITY_API_KEY"),
     max_retries=0,
     timeout=15,
 )
@@ -191,10 +193,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
-    if model == VISION_MODEL:
-        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
-    else:
-        stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, max_tokens=4096)
+    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
@@ -204,21 +203,23 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             if obj.delta.role != 'assistant':
                 raise ValueError("Role error")
         if obj.delta.content is not None:
-            yield obj.delta.content
-        if (obj.finish_reason is not None and obj.finish_reason != '') or ('finish_details' in obj.model_extra and obj.finish_details is not None):
+            yield {'type': 'text', 'text': obj.delta.content}
+        if 'citations' in response.model_extra and response.citations is not None:
+            yield {'type': 'citations', 'citations': response.citations}
+        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
             finish_reason = obj.finish_reason
             if 'finish_details' in obj.model_extra and obj.finish_details is not None:
                 assert finish_reason is None
                 finish_reason = obj.finish_details['type']
             if finish_reason == 'length':
-                yield '\n\n[!] Error: Output truncated due to limit'
+                yield {'type': 'error', 'text': '[!] Error: Output truncated due to limit\n'}
             elif finish_reason == 'stop':
                 pass
             elif finish_reason is not None:
                 if obj.finish_reason is not None:
-                    yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
+                    yield {'type': 'error', 'text': f'[!] Error: finish_reason="{finish_reason}"\n'}
                 else:
-                    yield f'\n\n[!] Error: finish_details="{obj.finish_details}"'
+                    yield {'type': 'error', 'text': f'[!] Error: finish_details="{obj.finish_details}"\n'}
             finished = True
 
 def construct_chat_history(chat_id, msg_id):
@@ -447,6 +448,9 @@ async def reply_handler(message):
     photo_message = message if message.photo is not None else extra_photo_message
     photo_hash = None
     if photo_message is not None:
+        await send_message(chat_id, '[!] Error: Images are not supported', msg_id)
+        return
+
         if photo_message.grouped_id is not None:
             await send_message(chat_id, '[!] Error: Grouped photos are not yet supported, but will be supported soon', msg_id)
             return
@@ -492,25 +496,58 @@ async def reply_handler(message):
     models = models if models is not None else [model]
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
-            if has_image:
-                m = VISION_MODEL
+            # if has_image:
+            #     m = VISION_MODEL
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
+
+def render_reply(reply, info, error, citations, is_generating):
+    reasoning = ''
+    if reply.startswith('<think>'):
+        cutoff = reply.find('</think>')
+        if cutoff == -1:
+            reasoning = reply[len('<think>'):].strip()
+            reply = ''
+        else:
+            reasoning = reply[len('<think>'):cutoff].strip()
+            reply = reply[cutoff + len('</think>'):].strip()
+    result = RichText.from_markdown(reply)
+    if reasoning:
+        result = RichText.Quote(reasoning, not is_generating) + '\n' + result
+    if citations:
+        result += RichText.Quote('\n'.join([f"[{i + 1}] {url}" for i, url in enumerate(citations)]), True)
+    if info:
+        result += '\n' + RichText.Quote(info)
+    if error:
+        result += '\n' + RichText.Quote(RichText.Bold(error))
+    if is_generating:
+        result += '\n' + RichText.Italic('[!Generating...]')
+    return result
 
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
     error_cnt = 0
     while True:
         reply = ''
+        info = ''
+        error = ''
+        citations = None
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
                 first_update_timestamp = None
                 async for delta in stream:
-                    reply += delta
+                    if delta['type'] == 'text':
+                        reply += delta['text']
+                    elif delta['type'] == 'error':
+                        error += delta['text']
+                    elif delta['type'] == 'info':
+                        info += delta['text']
+                    elif delta['type'] == 'citations':
+                        citations = delta['citations']
                     if first_update_timestamp is None:
                         first_update_timestamp = time.time()
                     if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
-                        await replymsgs.update(RichText.from_markdown(reply) + ' [!Generating...]')
-                await replymsgs.update(RichText.from_markdown(reply))
+                        await replymsgs.update(render_reply(reply, info, error, citations, True))
+                await replymsgs.update(render_reply(reply, info, error, citations, False))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
                     db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
@@ -519,12 +556,10 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, model=%r, task_id=%r, cnt=%r): %s', chat_id, msg_id, model, task_id, error_cnt, e)
                 will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
-                error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
+                error += f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}\n'
                 if will_retry:
-                    error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
-                if reply:
-                    error_msg = reply + '\n\n' + error_msg
-                await replymsgs.update(error_msg)
+                    error += f'Retrying ({error_cnt}/{OPENAI_MAX_RETRY})...\n'
+                await replymsgs.update(render_reply(reply, info, error, citations, False))
                 if will_retry:
                     await asyncio.sleep(OPENAI_RETRY_INTERVAL)
                 if not will_retry:
