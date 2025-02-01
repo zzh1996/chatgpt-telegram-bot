@@ -74,14 +74,14 @@ MODELS = [
 DEFAULT_MODEL = 'gpt-4-0613' # For compatibility with the old database format
 
 PRICING = {
-    'o1': (15e-6, 60e-6),
-    'o1-2024-12-17': (15e-6, 60e-6),
-    'o1-preview': (15e-6, 60e-6),
-    'o1-preview-2024-09-12': (15e-6, 60e-6),
-    'o1-mini': (1.1e-6, 4.4e-6),
-    'o1-mini-2024-09-12': (1.1e-6, 4.4e-6),
-    'o3-mini': (1.1e-6, 4.4e-6),
-    'o3-mini-2025-01-31': (1.1e-6, 4.4e-6),
+    'o1': (15e-6, 60e-6, 7.5e-6),
+    'o1-2024-12-17': (15e-6, 60e-6, 7.5e-6),
+    'o1-preview': (15e-6, 60e-6, 7.5e-6),
+    'o1-preview-2024-09-12': (15e-6, 60e-6, 7.5e-6),
+    'o1-mini': (1.1e-6, 4.4e-6, 0.55e-6),
+    'o1-mini-2024-09-12': (1.1e-6, 4.4e-6, 0.55e-6),
+    'o3-mini': (1.1e-6, 4.4e-6, 0.55e-6),
+    'o3-mini-2025-01-31': (1.1e-6, 4.4e-6, 0.55e-6),
 }
 
 def get_prompt(model):
@@ -245,55 +245,49 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                         if obj['type'] == 'image_url':
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
-    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r): %s', chat_id, msg_id, task_id, model, remove_image(messages))
-    if model == 'o1':
+
+    is_reasoning_model = model.startswith('o')
+    support_stream = model != 'o1' and model != 'o1-2024-12-17'
+    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31']
+    kwargs = {'model': model}
+    if support_stream:
+        kwargs['stream'] = True
+        kwargs['stream_options'] = {"include_usage": True}
+    if is_reasoning_model:
+        kwargs['timeout'] = httpx.Timeout(timeout=3600, connect=15)
+    if support_reasoning_effort:
+        kwargs['reasoning_effort'] = 'high'
+    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r, args=%r): %s', chat_id, msg_id, task_id, model, kwargs, remove_image(messages))
+    kwargs['messages'] = messages
+    if is_reasoning_model:
         async with bot.action(chat_id, 'typing'):
-            single_response = await aclient.chat.completions.create(
-                model=model,
-                messages=messages,
-                timeout=httpx.Timeout(timeout=3600, connect=15),
-                reasoning_effort='high',
-            )
-            async def to_aiter(x):
-                yield x
-            stream = to_aiter(single_response)
-    elif model.startswith('o1-'):
-        stream = await aclient.chat.completions.create(
-            model=model,
-            messages=messages,
-            stream=True,
-            stream_options={"include_usage": True},
-            timeout=httpx.Timeout(timeout=3600, connect=15),
-        )
-    elif model.startswith('o3-'):
-        stream = await aclient.chat.completions.create(
-            model=model,
-            messages=messages,
-            stream=True,
-            stream_options={"include_usage": True},
-            timeout=httpx.Timeout(timeout=3600, connect=15),
-            reasoning_effort='high',
-        )
+            stream = await aclient.chat.completions.create(**kwargs)
     else:
-        stream = await aclient.chat.completions.create(
-            model=model,
-            messages=messages,
-            stream=True,
-            stream_options={"include_usage": True},
-        )
+        stream = await aclient.chat.completions.create(**kwargs)
+    if not support_stream:
+        async def to_aiter(x):
+            yield x
+        stream = to_aiter(stream)
+
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
-        if (model.startswith('o1') or model.startswith('o3')) and response.usage is not None:
+        if is_reasoning_model and response.usage is not None:
             usage_text = f"Prompt tokens: {response.usage.prompt_tokens}\n"
+            cached_prompt_tokens = 0
+            if response.usage.prompt_tokens_details is not None:
+                if response.usage.prompt_tokens_details.cached_tokens is not None:
+                    if response.usage.prompt_tokens_details.cached_tokens > 0:
+                        cached_prompt_tokens = response.usage.prompt_tokens_details.cached_tokens
+                        usage_text += f"Cached prompt tokens: {cached_prompt_tokens}\n"
             if response.usage.completion_tokens_details is not None:
                 if response.usage.completion_tokens_details.reasoning_tokens is not None:
                     if response.usage.completion_tokens_details.reasoning_tokens > 0:
                         usage_text += f"Reasoning tokens: {response.usage.completion_tokens_details.reasoning_tokens}\n"
             usage_text += f"Completion tokens: {response.usage.completion_tokens}\n"
             if model in PRICING:
-                input_price, output_price = PRICING[model]
-                cost = response.usage.prompt_tokens * input_price + response.usage.completion_tokens * output_price
+                input_price, output_price, cached_price = PRICING[model]
+                cost = (response.usage.prompt_tokens - cached_prompt_tokens) * input_price + response.usage.completion_tokens * output_price + cached_prompt_tokens * cached_price
                 usage_text += f"Cost: ${cost:.2f}\n"
             yield {'type': 'info', 'text': usage_text}
         if finished:
