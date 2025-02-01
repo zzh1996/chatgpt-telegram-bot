@@ -73,7 +73,7 @@ class Browsing:
 
         text = compact_whitespaces(text)
 
-        if len(tiktoken.encoding_for_model('gpt-4').encode(text)) >= 16384:
+        if len(tiktoken.encoding_for_model('gpt-4o').encode(text)) >= 16384:
             text = compact_whitespaces(text_without_href)
 
         return {"title": data['title'], "content": text}

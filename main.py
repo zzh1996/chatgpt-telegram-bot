@@ -10,6 +10,7 @@ import uuid
 from collections import defaultdict
 import openai
 import tiktoken
+import httpx
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import RetryAfter, NetworkError, BadRequest
@@ -21,7 +22,7 @@ from plugins.youtube import Youtube
 from plugins.wolframalpha import WolframAlpha
 
 ADMIN_ID = 71863318
-DEFAULT_MODEL = "gpt-4o-2024-08-06"
+DEFAULT_MODEL = "o3-mini"
 TRIGGER = 'p$'
 PLUGINS = [Search, Browsing, Youtube, Calculator, WolframAlpha]
 
@@ -193,8 +194,11 @@ async def completion(messages, model, chat_id, msg_id, functions, tool_choice=No
         'model': model,
         'messages': messages,
         'stream': True,
+        'stream_options': {"include_usage": True},
+        'timeout': httpx.Timeout(timeout=600, connect=15),
+        'reasoning_effort': 'high',
         'tools': [{"type": "function", "function": f} for f in functions],
-        'parallel_tool_calls': False,
+        # 'parallel_tool_calls': False,
     }
     if tool_choice is not None:
         params['tool_choice'] = tool_choice
@@ -203,7 +207,9 @@ async def completion(messages, model, chat_id, msg_id, functions, tool_choice=No
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r): %s', chat_id, msg_id, response)
-        assert not finished
+        if finished:
+            assert len(response.choices) == 0
+            continue
         obj = response.choices[0]
         assert obj.delta.function_call is None # function_call is deprecated
         if obj.finish_reason is not None:
@@ -451,7 +457,7 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     msg = {"role": "assistant", "content": reply}
                     if tool_calls is not None:
                         msg['tool_calls'] = tool_calls
-                    enc = tiktoken.encoding_for_model(model)
+                    enc = tiktoken.encoding_for_model('gpt-4o')
                     estimated_input_tokens = len(enc.encode(json.dumps(chat_history + new_messages, ensure_ascii=False)))
                     estimated_output_tokens = len(enc.encode(json.dumps(msg, ensure_ascii=False)))
                     estimated_dollars = estimated_input_tokens * 5e-6 + estimated_output_tokens * 15e-6
@@ -480,7 +486,7 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             if 'error' in call_response:
                                 reply += f'\n\n[!] Error: Function call error: {call_response["error"]}'
                                 break
-                            enc = tiktoken.encoding_for_model(model)
+                            enc = tiktoken.encoding_for_model('gpt-4o')
                             response_tokens = len(enc.encode(call_response_json))
                             reply += f' Done! (Response {response_tokens} tokens)'
                             if response_tokens <= 100:
