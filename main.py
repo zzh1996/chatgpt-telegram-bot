@@ -42,7 +42,7 @@ TELEGRAM_MIN_INTERVAL = 3
 OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
-TOOL_CALLS_LIMIT = 5
+TOOL_CALLS_LIMIT = 10
 TOOL_CALLS_MAX_TOKENS = 32768
 
 telegram_last_timestamp = defaultdict(lambda: None)
@@ -460,7 +460,7 @@ async def reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     enc = tiktoken.encoding_for_model('gpt-4o')
                     estimated_input_tokens = len(enc.encode(json.dumps(chat_history + new_messages, ensure_ascii=False)))
                     estimated_output_tokens = len(enc.encode(json.dumps(msg, ensure_ascii=False)))
-                    estimated_dollars = estimated_input_tokens * 5e-6 + estimated_output_tokens * 15e-6
+                    estimated_dollars = estimated_input_tokens * 1.1e-6 + estimated_output_tokens * 4.4e-6
                     new_messages.append(msg)
                     if tool_calls is not None:
                         for tool_call in tool_calls:
