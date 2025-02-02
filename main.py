@@ -21,33 +21,45 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 
 ADMIN_ID = 71863318
 
+PROVIDERS = {
+    'together': {'base_url': 'https://api.together.xyz/v1', 'api_key': os.getenv("TOGETHER_API_KEY")},
+    'moonshot': {'base_url': 'https://api.moonshot.cn/v1', 'api_key': os.getenv("MOONSHOT_API_KEY")},
+    'hyperbolic': {'base_url': 'https://api.hyperbolic.xyz/v1', 'api_key': os.getenv("HYPERBOLIC_API_KEY")},
+}
+
 MODELS = [
-    {'prefix': 'l$', 'model': 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'l70$', 'model': 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'l8$', 'model': 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'l3$', 'model': 'meta-llama/Meta-Llama-3-70B-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'ge$', 'model': 'google/gemma-2-27b-it', 'prompt_template': ''},
-    {'prefix': 'lv$', 'model': 'meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'lv11$', 'model': 'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'l3b$', 'model': 'meta-llama/Llama-3.2-3B-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'l33$', 'model': 'meta-llama/Llama-3.3-70B-Instruct-Turbo', 'prompt_template': ''},
-    {'prefix': 'nv$', 'model': 'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF', 'prompt_template': ''},
+    # {'prefix': 'm$', 'model': 'moonshot/moonshot-v1-8k'},
+    # {'prefix': 'moonshot-v1-8k$', 'model': 'moonshot/moonshot-v1-8k'},
+    # {'prefix': 'moonshot-v1-32k$', 'model': 'moonshot/moonshot-v1-32k'},
+    # {'prefix': 'moonshot-v1-128k$', 'model': 'moonshot/moonshot-v1-128k'},
+    {'prefix': 'r0$', 'model': 'hyperbolic/deepseek-ai/DeepSeek-R1-Zero'},
+    {'prefix': 'hr1$', 'model': 'hyperbolic/deepseek-ai/DeepSeek-R1'},
+    {'prefix': 'hd3$', 'model': 'hyperbolic/deepseek-ai/DeepSeek-V3'},
+
+    {'prefix': 'l$', 'model': 'together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo'},
+    {'prefix': 'l70$', 'model': 'together/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'},
+    {'prefix': 'l8$', 'model': 'together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo'},
+    {'prefix': 'l3$', 'model': 'together/meta-llama/Meta-Llama-3-70B-Instruct-Turbo'},
+    {'prefix': 'lv$', 'model': 'together/meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo'},
+    {'prefix': 'lv11$', 'model': 'together/meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo'},
+    {'prefix': 'l3b$', 'model': 'together/meta-llama/Llama-3.2-3B-Instruct-Turbo'},
+    {'prefix': 'l33$', 'model': 'together/meta-llama/Llama-3.3-70B-Instruct-Turbo'},
+    {'prefix': 'ge$', 'model': 'together/google/gemma-2-27b-it'},
+    {'prefix': 'nv$', 'model': 'together/nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'},
 ]
-DEFAULT_MODEL = 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo' # For compatibility with the old database format
-VISION_MODEL = 'meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo'
 
-def get_prompt(model):
-    for m in MODELS:
-        if m['model'] == model:
-            return m['prompt_template'].replace('{current_date}', (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=8)).strftime('%Y-%m-%d'))
-    raise ValueError('Model not found')
+VISION_MODELS = {
+    'moonshot/moonshot-v1-8k': 'moonshot/moonshot-v1-8k-vision-preview',
+    'moonshot/moonshot-v1-32k': 'moonshot/moonshot-v1-32k-vision-preview',
+    'moonshot/moonshot-v1-128k': 'moonshot/moonshot-v1-128k-vision-preview',
+    'together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo': 'together/meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo',
+    'together/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo': 'together/meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo',
+    'together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo': 'together/meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo',
+    'together/meta-llama/Meta-Llama-3-70B-Instruct-Turbo': 'together/meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo',
+    'together/meta-llama/Llama-3.2-3B-Instruct-Turbo': 'together/meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo',
+    'together/meta-llama/Llama-3.3-70B-Instruct-Turbo': 'together/meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo',
+}
 
-aclient = openai.AsyncOpenAI(
-    api_key=os.getenv("TOGETHER_API_KEY"),
-    base_url="https://api.together.xyz/v1",
-    max_retries=0,
-    timeout=15,
-)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
@@ -182,8 +194,7 @@ def load_photo(h):
 
 async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
-    system_prompt = get_prompt(model)
-    messages=[{"role": "system", "content": system_prompt}] if system_prompt else []
+    messages = []
     roles = ["user", "assistant"]
     role_id = 0
     for msg in chat_history:
@@ -199,7 +210,17 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r): %s', chat_id, msg_id, task_id, model, remove_image(messages))
-    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
+    if '/' not in model or model.split('/', 1)[0] not in PROVIDERS:
+        raise ValueError(f"Unknown provider in model: {model}")
+    provider_name, api_model_name = model.split('/', 1)
+    provider = PROVIDERS[provider_name]
+    aclient = openai.AsyncOpenAI(
+        api_key=provider['api_key'],
+        base_url=provider['base_url'],
+        max_retries=0,
+        timeout=15,
+    )
+    stream = await aclient.chat.completions.create(model=api_model_name, messages=messages, stream=True)
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
@@ -212,7 +233,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 raise ValueError("Role error")
         if obj.delta.content is not None:
             yield obj.delta.content
-        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
+        if (obj.finish_reason is not None and obj.finish_reason != '') or ('finish_details' in obj.model_extra and obj.finish_details is not None):
             finish_reason = obj.finish_reason
             if 'finish_details' in obj.model_extra and obj.finish_details is not None:
                 assert finish_reason is None
@@ -231,20 +252,20 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
 def construct_chat_history(chat_id, msg_id):
     messages = []
     should_be_bot = False
-    model = DEFAULT_MODEL
+    model = None
     has_image = False
     while True:
         key = repr((chat_id, msg_id))
         if key not in db:
             logging.error('History message not found (chat_id=%r, msg_id=%r)', chat_id, msg_id)
-            return None, None
+            return None, None, None
         is_bot, message, reply_id, *params = db[key]
         if params:
             if params[0] is not None:
                 model = params[0]
         if is_bot != should_be_bot:
             logging.error('Role does not match (chat_id=%r, msg_id=%r)', chat_id, msg_id)
-            return None, None
+            return None, None, None
         if isinstance(message, list):
             new_message = []
             for obj in message:
@@ -266,7 +287,7 @@ def construct_chat_history(chat_id, msg_id):
         msg_id = reply_id
     if len(messages) % 2 != 1:
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
-        return None, None
+        return None, None, None
     return messages[::-1], model, has_image
 
 @only_admin
@@ -499,16 +520,15 @@ async def reply_handler(message):
     models = models if models is not None else [model]
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
-            if 'Vision' not in m and has_image:
-                m = VISION_MODEL
+            if has_image and m in VISION_MODELS:
+                m = VISION_MODELS[m]
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
-            await asyncio.sleep(3)
 
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
     error_cnt = 0
     while True:
         reply = ''
-        async with BotReplyMessages(chat_id, msg_id, f'[{model.split("/")[-1]}] ') as replymsgs:
+        async with BotReplyMessages(chat_id, msg_id, f'[{model}]') as replymsgs:
             try:
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
                 first_update_timestamp = None
