@@ -25,6 +25,7 @@ PROVIDERS = {
     'together': {'base_url': 'https://api.together.xyz/v1', 'api_key': os.getenv("TOGETHER_API_KEY")},
     'moonshot': {'base_url': 'https://api.moonshot.cn/v1', 'api_key': os.getenv("MOONSHOT_API_KEY")},
     'hyperbolic': {'base_url': 'https://api.hyperbolic.xyz/v1', 'api_key': os.getenv("HYPERBOLIC_API_KEY")},
+    'fireworks': {'base_url': 'https://api.fireworks.ai/inference/v1', 'api_key': os.getenv("FIREWORKS_API_KEY")},
 }
 
 MODELS = [
@@ -35,6 +36,12 @@ MODELS = [
     {'prefix': 'r0$', 'model': 'hyperbolic/deepseek-ai/DeepSeek-R1-Zero'},
     {'prefix': 'hr1$', 'model': 'hyperbolic/deepseek-ai/DeepSeek-R1'},
     {'prefix': 'hd3$', 'model': 'hyperbolic/deepseek-ai/DeepSeek-V3'},
+
+    {'prefix': 'fr1$', 'model': 'fireworks/accounts/fireworks/models/deepseek-r1'},
+    {'prefix': 'fd3$', 'model': 'fireworks/accounts/fireworks/models/deepseek-v3'},
+
+    {'prefix': 'tr1$', 'model': 'together/deepseek-ai/DeepSeek-R1'},
+    {'prefix': 'td3$', 'model': 'together/deepseek-ai/DeepSeek-V3'},
 
     {'prefix': 'l$', 'model': 'together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo'},
     {'prefix': 'l70$', 'model': 'together/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'},
