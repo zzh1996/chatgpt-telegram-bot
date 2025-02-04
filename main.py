@@ -67,6 +67,13 @@ VISION_MODELS = {
     'together/meta-llama/Llama-3.3-70B-Instruct-Turbo': 'together/meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo',
 }
 
+PREFILLS = {
+    'hyperbolic/deepseek-ai/DeepSeek-R1-Zero': '<think>\n',
+    'hyperbolic/deepseek-ai/DeepSeek-R1': '<think>\n',
+    # 'fireworks/accounts/fireworks/models/deepseek-r1': '<think>\n',
+    'together/deepseek-ai/DeepSeek-R1': '<think>\n',
+}
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
@@ -207,6 +214,8 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     for msg in chat_history:
         messages.append({"role": roles[role_id], "content": msg})
         role_id = 1 - role_id
+    if model in PREFILLS:
+        messages.append({"role": "assistant", "content": PREFILLS[model]})
     def remove_image(messages):
         new_messages = copy.deepcopy(messages)
         for message in new_messages:
