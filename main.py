@@ -303,7 +303,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 raise ValueError("Role error")
         if delta.content is not None:
             yield {'type': 'text', 'text': delta.content}
-        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
+        if (obj.finish_reason is not None and obj.finish_reason != '') or ('finish_details' in obj.model_extra and obj.finish_details is not None):
             if hasattr(obj, 'delta'):
                 assert all(item is None for item in [
                     delta.content,
