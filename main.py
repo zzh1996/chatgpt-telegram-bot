@@ -247,7 +247,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         return new_messages
 
     is_reasoning_model = model.startswith('o')
-    support_stream = model != 'o1' and model != 'o1-2024-12-17'
+    support_stream = True # As of 2025-02-14, o1 supports streaming
     support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31']
     kwargs = {'model': model}
     if support_stream:
