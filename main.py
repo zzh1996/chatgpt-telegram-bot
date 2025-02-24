@@ -22,8 +22,10 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'c$', 'model': 'claude-3-5-sonnet-20241022', 'prompt_template': ''},
-    {'prefix': 'c35s$', 'model': 'claude-3-5-sonnet-20240620', 'prompt_template': ''},
+    {'prefix': 'c$', 'model': 'claude-3-7-sonnet-20250219', 'prompt_template': ''},
+    {'prefix': 'c35s$', 'model': 'claude-3-5-sonnet-20241022', 'prompt_template': ''},
+    {'prefix': 'claude-3-5-sonnet-20240620$', 'model': 'claude-3-5-sonnet-20240620', 'prompt_template': ''},
+    {'prefix': 'claude-3-5-haiku-20241022$', 'model': 'claude-3-5-haiku-20241022', 'prompt_template': ''},
     {'prefix': 'c3$', 'model': 'claude-3-opus-20240229', 'prompt_template': ''},
     {'prefix': 'c3s$', 'model': 'claude-3-sonnet-20240229', 'prompt_template': ''},
     {'prefix': 'c3h$', 'model': 'claude-3-haiku-20240307', 'prompt_template': ''},
@@ -216,7 +218,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         model=model,
         messages=messages,
         stream=True,
-        max_tokens=8192 if model.startswith('claude-3-5-') else 4096,
+        max_tokens=8192 if model.startswith('claude-3-5-') or model.startswith('claude-3-7') else 4096,
         extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
     )
     async for event in stream:
