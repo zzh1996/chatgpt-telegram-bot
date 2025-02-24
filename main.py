@@ -21,8 +21,10 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'cs$', 'model': 'claude-3-5-sonnet-20241022'},
-    {'prefix': 'c35ss$', 'model': 'claude-3-5-sonnet-20240620'},
+    {'prefix': 'cs$', 'model': 'claude-3-7-sonnet-20250219'},
+    {'prefix': 'c35ss$', 'model': 'claude-3-5-sonnet-20241022'},
+    {'prefix': 'c350620ss$', 'model': 'claude-3-5-sonnet-20240620'},
+    {'prefix': 'c35hs$', 'model': 'claude-3-5-haiku-20241022'},
     {'prefix': 'c3os$', 'model': 'claude-3-opus-20240229'},
     {'prefix': 'c3ss$', 'model': 'claude-3-sonnet-20240229'},
     {'prefix': 'c3hs$', 'model': 'claude-3-haiku-20240307'},
@@ -200,7 +202,7 @@ async def completion(messages, model, chat_id, msg_id, system_prompt):
         model=model,
         messages=messages,
         stream=True,
-        max_tokens=8192 if model.startswith('claude-3-5-') else 4096,
+        max_tokens=8192 if model.startswith('claude-3-5-') or model.startswith('claude-3-7') else 4096,
         system=system_prompt,
         extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
     )
