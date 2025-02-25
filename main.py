@@ -241,7 +241,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
         if finished:
-            assert len(response.choices) == 0
+            assert len(response.choices) == 0 or response.choices[0].delta.content == ''
             continue
         obj = response.choices[0]
         if obj.delta.role is not None:
