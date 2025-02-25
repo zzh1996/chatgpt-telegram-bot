@@ -576,7 +576,7 @@ async def reply_handler(message):
 def render_reply(reply, info, error, reasoning, is_generating):
     result = RichText.from_markdown(reply)
     if reasoning:
-        result = RichText.Quote(reasoning, True) + '\n' + result
+        result = RichText.Quote(reasoning, not is_generating) + '\n' + result
     if info:
         result += '\n' + RichText.Quote(info)
     if error:
