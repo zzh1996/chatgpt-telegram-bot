@@ -33,6 +33,10 @@ MODELS = [
 ]
 DEFAULT_MODEL = 'claude-3-opus-20240229' # For compatibility with the old database format
 
+PRICING = {
+    'claude-3-7-sonnet-20250219': (3e-6, 15e-6, 3.75e-6, 0.3e-6),
+}
+
 def get_prompt(model):
     for m in MODELS:
         if m['model'] == model:
@@ -234,10 +238,10 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             stream=True,
             max_tokens=8192 if model.startswith('claude-3-5-') or model.startswith('claude-3-7') else 4096,
         )
-    output_tokens = None
-    cache_creation_input_tokens = None
-    cache_read_input_tokens = None
-    input_tokens = None
+    output_tokens = 0
+    cache_creation_input_tokens = 0
+    cache_read_input_tokens = 0
+    input_tokens = 0
     redacted_thinking = False
     async for event in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, event)
@@ -277,6 +281,14 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                     usage_text += f"Input tokens: {input_tokens}\n"
                 if output_tokens:
                     usage_text += f"Output tokens: {output_tokens}\n"
+                if model.split()[0] in PRICING:
+                    input_price, output_price, caching_write_price, caching_read_price = PRICING[model.split()[0]]
+                    cost = 0
+                    cost += input_price * input_tokens
+                    cost += output_price * output_tokens
+                    cost += caching_write_price * cache_creation_input_tokens
+                    cost += caching_read_price * cache_read_input_tokens
+                    usage_text += f"Cost: ${cost:.2f}\n"
                 if usage_text and model.endswith(' thinking'):
                     yield {'type': 'info', 'text': usage_text}
             stop_reason = event.delta.stop_reason
