@@ -23,6 +23,7 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 'c$', 'model': 'claude-3-7-sonnet-20250219', 'prompt_template': ''},
+    {'prefix': 'ct$', 'model': 'claude-3-7-sonnet-20250219 thinking', 'prompt_template': ''},
     {'prefix': 'c35s$', 'model': 'claude-3-5-sonnet-20241022', 'prompt_template': ''},
     {'prefix': 'claude-3-5-sonnet-20240620$', 'model': 'claude-3-5-sonnet-20240620', 'prompt_template': ''},
     {'prefix': 'claude-3-5-haiku-20241022$', 'model': 'claude-3-5-haiku-20241022', 'prompt_template': ''},
@@ -214,35 +215,76 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['source']['data'] = obj['source']['data'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
-    stream = await aclient.messages.create(
-        model=model,
-        messages=messages,
-        stream=True,
-        max_tokens=8192 if model.startswith('claude-3-5-') or model.startswith('claude-3-7') else 4096,
-        extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
-    )
+    if model.endswith(' thinking'):
+        stream = await aclient.beta.messages.create(
+            model=model.split()[0],
+            messages=messages,
+            stream=True,
+            max_tokens=128000,
+            thinking={
+                "type": "enabled",
+                "budget_tokens": 127999,
+            },
+            betas=["output-128k-2025-02-19"],
+        )
+    else:
+        stream = await aclient.messages.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            max_tokens=8192 if model.startswith('claude-3-5-') or model.startswith('claude-3-7') else 4096,
+        )
+    output_tokens = None
+    cache_creation_input_tokens = None
+    cache_read_input_tokens = None
+    input_tokens = None
+    redacted_thinking = False
     async for event in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, event)
         if event.type == 'message_start':
             assert event.message.role == 'assistant'
             assert event.message.content == []
             assert event.message.stop_reason is None
+            if event.message.usage is not None:
+                cache_creation_input_tokens = event.message.usage.cache_creation_input_tokens
+                cache_read_input_tokens = event.message.usage.cache_read_input_tokens
+                input_tokens = event.message.usage.input_tokens
         elif event.type == 'content_block_delta':
-            assert event.index == 0
-            assert event.delta.type == 'text_delta'
-            yield event.delta.text
+            if event.delta.type == 'text_delta':
+                yield {'type': 'text', 'text': event.delta.text}
+            elif event.delta.type == 'thinking_delta':
+                yield {'type': 'reasoning', 'text': event.delta.thinking}
+            elif event.delta.type == 'signature_delta':
+                pass
+            else:
+                raise ValueError(f"Unknown delta type: {event.delta.type}")
         elif event.type == 'content_block_start':
-            assert event.index == 0
-            assert event.content_block.text == ''
+            if event.content_block.type == 'redacted_thinking':
+                if not redacted_thinking:
+                    redacted_thinking = True
+                    yield {'type': 'reasoning', 'text': '[redacted_thinking]'}
         elif event.type == 'content_block_stop':
-            assert event.index == 0
+            pass
         elif event.type == 'message_delta':
+            if event.usage is not None:
+                output_tokens = event.usage.output_tokens
+                usage_text = ''
+                if cache_creation_input_tokens:
+                    usage_text += f"Cache creation input tokens: {cache_creation_input_tokens}\n"
+                if cache_read_input_tokens:
+                    usage_text += f"Cache read input tokens: {cache_read_input_tokens}\n"
+                if input_tokens:
+                    usage_text += f"Input tokens: {input_tokens}\n"
+                if output_tokens:
+                    usage_text += f"Output tokens: {output_tokens}\n"
+                if usage_text and model.endswith(' thinking'):
+                    yield {'type': 'info', 'text': usage_text}
             stop_reason = event.delta.stop_reason
             if stop_reason is not None:
                 if stop_reason == 'end_turn':
                     pass
                 else:
-                    yield f'\n\n[!] Error: stop_reason="{stop_reason}"'
+                    yield {'type': 'error', 'text': f'[!] Error: stop_reason="{stop_reason}"'}
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
@@ -519,21 +561,43 @@ async def reply_handler(message):
         for task_id, m in enumerate(models):
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
+def render_reply(reply, info, error, reasoning, is_generating):
+    result = RichText.from_markdown(reply)
+    if reasoning:
+        result = RichText.Quote(reasoning, True) + '\n' + result
+    if info:
+        result += '\n' + RichText.Quote(info)
+    if error:
+        result += '\n' + RichText.Quote(RichText.Bold(error))
+    if is_generating:
+        result += '\n' + RichText.Italic('[!Generating...]')
+    return result
+
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
     error_cnt = 0
     while True:
         reply = ''
+        info = ''
+        error = ''
+        reasoning = ''
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
                 first_update_timestamp = None
                 async for delta in stream:
-                    reply += delta
+                    if delta['type'] == 'text':
+                        reply += delta['text']
+                    elif delta['type'] == 'error':
+                        error += delta['text']
+                    elif delta['type'] == 'info':
+                        info += delta['text']
+                    elif delta['type'] == 'reasoning':
+                        reasoning += delta['text']
                     if first_update_timestamp is None:
                         first_update_timestamp = time.time()
                     if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
-                        await replymsgs.update(RichText.from_markdown(reply) + ' [!Generating...]')
-                await replymsgs.update(RichText.from_markdown(reply))
+                        await replymsgs.update(render_reply(reply, info, error, reasoning, True))
+                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
                     db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
@@ -542,12 +606,10 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, model=%r, task_id=%r, cnt=%r): %s', chat_id, msg_id, model, task_id, error_cnt, e)
                 will_retry = error_cnt <= OPENAI_MAX_RETRY
-                error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
+                error += f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}\n'
                 if will_retry:
-                    error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
-                if reply:
-                    error_msg = reply + '\n\n' + error_msg
-                await replymsgs.update(error_msg)
+                    error += f'Retrying ({error_cnt}/{OPENAI_MAX_RETRY})...\n'
+                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 if will_retry:
                     await asyncio.sleep(OPENAI_RETRY_INTERVAL)
                 if not will_retry:
