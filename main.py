@@ -29,7 +29,12 @@ GPT_4_TURBO_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI,
 GPT_4O_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2023-10\nCurrent date: {current_date}'
 
 MODELS = [
-    {'prefix': '$', 'model': 'chatgpt-4o-latest', 'prompt_template': GPT_4O_PROMPT},
+    {'prefix': '$', 'model': 'gpt-4.5-preview', 'prompt_template': ''},
+
+    {'prefix': '45$', 'model': 'gpt-4.5-preview', 'prompt_template': ''},
+    {'prefix': 'gpt-4.5-preview$', 'model': 'gpt-4.5-preview', 'prompt_template': ''},
+    {'prefix': 'gpt-4.5-preview-2025-02-27$', 'model': 'gpt-4.5-preview-2025-02-27', 'prompt_template': ''},
+
     {'prefix': '4o$', 'model': 'gpt-4o-2024-11-20', 'prompt_template': GPT_4O_PROMPT},
     {'prefix': '4om$', 'model': 'gpt-4o-mini-2024-07-18', 'prompt_template': GPT_4O_PROMPT},
     {'prefix': '4$', 'model': 'gpt-4-turbo-2024-04-09', 'prompt_template': GPT_4_TURBO_PROMPT},
@@ -82,6 +87,8 @@ PRICING = {
     'o1-mini-2024-09-12': (1.1e-6, 4.4e-6, 0.55e-6),
     'o3-mini': (1.1e-6, 4.4e-6, 0.55e-6),
     'o3-mini-2025-01-31': (1.1e-6, 4.4e-6, 0.55e-6),
+    'gpt-4.5-preview': (75e-6, 150e-6, 37.5e-6),
+    'gpt-4.5-preview-2025-02-27': (75e-6, 150e-6, 37.5e-6),
 }
 
 def get_prompt(model):
@@ -272,7 +279,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
-        if is_reasoning_model and response.usage is not None:
+        if model in PRICING and response.usage is not None:
             usage_text = f"Prompt tokens: {response.usage.prompt_tokens}\n"
             cached_prompt_tokens = 0
             if response.usage.prompt_tokens_details is not None:
@@ -285,10 +292,9 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                     if response.usage.completion_tokens_details.reasoning_tokens > 0:
                         usage_text += f"Reasoning tokens: {response.usage.completion_tokens_details.reasoning_tokens}\n"
             usage_text += f"Completion tokens: {response.usage.completion_tokens}\n"
-            if model in PRICING:
-                input_price, output_price, cached_price = PRICING[model]
-                cost = (response.usage.prompt_tokens - cached_prompt_tokens) * input_price + response.usage.completion_tokens * output_price + cached_prompt_tokens * cached_price
-                usage_text += f"Cost: ${cost:.2f}\n"
+            input_price, output_price, cached_price = PRICING[model]
+            cost = (response.usage.prompt_tokens - cached_prompt_tokens) * input_price + response.usage.completion_tokens * output_price + cached_prompt_tokens * cached_price
+            usage_text += f"Cost: ${cost:.2f}\n"
             yield {'type': 'info', 'text': usage_text}
         if finished:
             assert len(response.choices) == 0
