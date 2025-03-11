@@ -31,6 +31,11 @@ GPT_4O_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, base
 MODELS = [
     {'prefix': '$', 'model': 'chatgpt-4o-latest', 'prompt_template': GPT_4O_PROMPT},
 
+    {'prefix': '4oms$', 'model': 'gpt-4o-mini-search-preview', 'prompt_template': ''},
+    {'prefix': 'gpt-4o-mini-search-preview-2025-03-11$', 'model': 'gpt-4o-mini-search-preview-2025-03-11', 'prompt_template': ''},
+    {'prefix': '4os$', 'model': 'gpt-4o-search-preview', 'prompt_template': ''},
+    {'prefix': 'gpt-4o-search-preview-2025-03-11$', 'model': 'gpt-4o-search-preview-2025-03-11', 'prompt_template': ''},
+
     {'prefix': '45$', 'model': 'gpt-4.5-preview', 'prompt_template': ''},
     {'prefix': 'gpt-4.5-preview$', 'model': 'gpt-4.5-preview', 'prompt_template': ''},
     {'prefix': 'gpt-4.5-preview-2025-02-27$', 'model': 'gpt-4.5-preview-2025-02-27', 'prompt_template': ''},
