@@ -261,6 +261,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     is_reasoning_model = model.startswith('o')
     support_stream = True # As of 2025-02-14, o1 supports streaming
     support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31']
+    is_search_model = 'search' in model
     kwargs = {'model': model}
     if support_stream:
         kwargs['stream'] = True
@@ -269,6 +270,8 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         kwargs['timeout'] = httpx.Timeout(timeout=3600, connect=15)
     if support_reasoning_effort:
         kwargs['reasoning_effort'] = 'high'
+    if is_search_model:
+        kwargs['web_search_options'] = {'search_context_size': 'high'}
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r, args=%r): %s', chat_id, msg_id, task_id, model, kwargs, remove_image(messages))
     kwargs['messages'] = messages
     if is_reasoning_model:
