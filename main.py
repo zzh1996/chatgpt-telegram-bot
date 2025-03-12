@@ -29,6 +29,7 @@ MODELS = [
     {'prefix': 'g15$', 'model': 'gemini-1.5-pro-latest'},
     {'prefix': 'g1$', 'model': 'gemini-1.0-pro-latest', 'vision_model': 'gemini-pro-vision'},
     {'prefix': 'gt$', 'model': 'gemini-2.0-flash-thinking-exp-01-21'},
+    {'prefix': 'ge$', 'model': 'gemma-3-27b-it'},
 
     {'prefix': 'gemini-2.0-flash$', 'model': 'gemini-2.0-flash'},
     {'prefix': 'gemini-2.0-flash-lite-preview-02-05$', 'model': 'gemini-2.0-flash-lite-preview-02-05'},
