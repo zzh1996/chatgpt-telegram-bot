@@ -51,7 +51,7 @@ MODELS = [
     {'prefix': 'lv11$', 'model': 'together/meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo'},
     {'prefix': 'l3b$', 'model': 'together/meta-llama/Llama-3.2-3B-Instruct-Turbo'},
     {'prefix': 'l33$', 'model': 'together/meta-llama/Llama-3.3-70B-Instruct-Turbo'},
-    {'prefix': 'ge$', 'model': 'together/google/gemma-2-27b-it'},
+    {'prefix': 'ge2$', 'model': 'together/google/gemma-2-27b-it'},
     {'prefix': 'nv$', 'model': 'together/nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'},
 ]
 
