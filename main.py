@@ -10,8 +10,7 @@ import base64
 import copy
 from collections import defaultdict
 from richtext import RichText
-import aiohttp
-import json
+import openai
 from telethon import TelegramClient, events, errors, functions, types
 import signal
 
@@ -23,24 +22,17 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'e$', 'model': 'ERNIE-4.0-Turbo-8K-Preview', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-turbo-8k-preview'},
-    {'prefix': 'e-$', 'model': 'ERNIE-4.0-Turbo-8K-Preview disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-turbo-8k-preview'},
-    {'prefix': 'ERNIE-4.0-Turbo-8K$', 'model': 'ERNIE-4.0-Turbo-8K', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-turbo-8k'},
-    {'prefix': 'ERNIE-4.0-Turbo-8K-$', 'model': 'ERNIE-4.0-Turbo-8K disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-turbo-8k'},
-    {'prefix': 'ERNIE-4.0-Turbo-8K-Preview$', 'model': 'ERNIE-4.0-Turbo-8K-Preview', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-turbo-8k-preview'},
-    {'prefix': 'ERNIE-4.0-Turbo-8K-Preview-$', 'model': 'ERNIE-4.0-Turbo-8K-Preview disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-turbo-8k-preview'},
-    {'prefix': 'ERNIE-4.0-8K$', 'model': 'ERNIE-4.0-8K', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions_pro'},
-    {'prefix': 'ERNIE-4.0-8K-$', 'model': 'ERNIE-4.0-8K disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions_pro'},
-    {'prefix': 'ERNIE-4.0-8K-Preview$', 'model': 'ERNIE-4.0-8K-Preview', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-preview'},
-    {'prefix': 'ERNIE-4.0-8K-Preview-$', 'model': 'ERNIE-4.0-8K-Preview disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-preview'},
-    {'prefix': 'ERNIE-4.0-8K-Latest$', 'model': 'ERNIE-4.0-8K-Latest', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-latest'},
-    {'prefix': 'ERNIE-4.0-8K-Latest-$', 'model': 'ERNIE-4.0-8K-Latest disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-latest'},
-    {'prefix': 'ERNIE-4.0-8K-0329$', 'model': 'ERNIE-4.0-8K-0329', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-0329'},
-    {'prefix': 'ERNIE-4.0-8K-0329-$', 'model': 'ERNIE-4.0-8K-0329 disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-0329'},
-    {'prefix': 'ERNIE-4.0-8K-0613$', 'model': 'ERNIE-4.0-8K-0613', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-0613'},
-    {'prefix': 'ERNIE-4.0-8K-0613-$', 'model': 'ERNIE-4.0-8K-0613 disable_search', 'prompt_template': '', 'url': 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie-4.0-8k-0613'},
+    {'prefix': 'e$', 'model': 'ernie-4.5-8k-preview', 'prompt_template': ''},
+    {'prefix': 'e4$', 'model': 'ernie-4.0-turbo-8k-preview', 'prompt_template': ''},
+    {'prefix': 'ernie-4.0-turbo-8k$', 'model': 'ernie-4.0-turbo-8k', 'prompt_template': ''},
+    {'prefix': 'ernie-4.0-turbo-8k-preview$', 'model': 'ernie-4.0-turbo-8k-preview', 'prompt_template': ''},
+    {'prefix': 'ernie-4.0-turbo-8k-latest$', 'model': 'ernie-4.0-turbo-8k-latest', 'prompt_template': ''},
+    {'prefix': 'ernie-4.0-turbo-128k$', 'model': 'ernie-4.0-turbo-128k', 'prompt_template': ''},
+    {'prefix': 'ernie-4.0-8k$', 'model': 'ernie-4.0-8k', 'prompt_template': ''},
+    {'prefix': 'ernie-4.0-8k-preview$', 'model': 'ernie-4.0-8k-preview', 'prompt_template': ''},
+    {'prefix': 'ernie-4.0-8k-latest$', 'model': 'ernie-4.0-8k-latest', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'ERNIE-4.0-8K-Preview-0518' # For compatibility with the old database format
+DEFAULT_MODEL = 'ernie-4.0-8k-preview' # For compatibility with the old database format
 
 def get_prompt(model):
     for m in MODELS:
@@ -48,11 +40,12 @@ def get_prompt(model):
             return m['prompt_template'].replace('{current_time}', (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S'))
     raise ValueError('Model not found')
 
-def get_url(model):
-    for m in MODELS:
-        if m['model'] == model:
-            return m['url']
-    raise ValueError('Model not found')
+aclient = openai.AsyncOpenAI(
+    base_url='https://qianfan.baidubce.com/v2',
+    api_key=os.getenv("BAIDU_API_KEY"),
+    max_retries=0,
+    timeout=15,
+)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
@@ -60,7 +53,7 @@ TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
 
 TELEGRAM_LENGTH_LIMIT = 4096
 TELEGRAM_MIN_INTERVAL = 3
-OPENAI_MAX_RETRY = 1
+OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
 TEXT_FILE_SIZE_LIMIT = 100_000
@@ -68,58 +61,6 @@ TRIGGERS_LIMIT = 20
 
 telegram_last_timestamp = defaultdict(lambda: None)
 telegram_rate_limit_lock = defaultdict(asyncio.Lock)
-
-class Ernie:
-    def __init__(self, api_key, secret_key):
-        self.api_key=api_key
-        self.secret_key=secret_key
-
-    async def create(self, model, messages):
-        headers = {
-            'Content-Type': 'application/json',
-        }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://aip.baidubce.com/oauth/2.0/token",
-                params={
-                    'grant_type': 'client_credentials',
-                    'client_id': self.api_key,
-                    'client_secret': self.secret_key,
-                },
-                headers=headers,
-            ) as response:
-                if response.status != 200:
-                    content = await response.text()
-                    raise ValueError(f'HTTP status {response.status}: {content}')
-                access_token = (await response.json())['access_token']
-
-            async with session.post(
-                get_url(model),
-                params={'access_token': access_token},
-                headers=headers,
-                json={
-                    'messages': messages,
-                    'stream': True,
-                    'max_output_tokens': 2048,
-                    'disable_search': 'disable_search' in model,
-                },
-            ) as response:
-                if response.status != 200:
-                    content = await response.text()
-                    raise ValueError(f'HTTP status {response.status}: {content}')
-                if not response.headers['content-type'].startswith('text/event-stream'):
-                    content = await response.text()
-                    raise ValueError(f'Error: {content}')
-                async for line in response.content:
-                    logging.info('Received line: %r', line)
-                    line = line.decode().rstrip('\n')
-                    if line.startswith('data:'):
-                        data = line[5:]
-                        if data.startswith(' '):
-                            data = data[1:]
-                        yield json.loads(data)
-
-aclient = Ernie(os.getenv("BAIDU_API_KEY"), os.getenv("BAIDU_SECRET_KEY"))
 
 class PendingReplyManager:
     def __init__(self):
@@ -256,20 +197,33 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                         if obj['type'] == 'image_url':
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
-    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
-    stream = aclient.create(model=model, messages=messages)
+    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r): %s', chat_id, msg_id, task_id, model, remove_image(messages))
+    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
+    finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
-        if 'result' in response and response['result']:
-            yield response['result']
-        if 'finish_reason' in response:
-            finish_reason = response['finish_reason']
+        assert not finished
+        obj = response.choices[0]
+        if obj.delta.role is not None:
+            if obj.delta.role != 'assistant':
+                raise ValueError("Role error")
+        if obj.delta.content is not None:
+            yield obj.delta.content
+        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
+            finish_reason = obj.finish_reason
+            if 'finish_details' in obj.model_extra and obj.finish_details is not None:
+                assert finish_reason is None
+                finish_reason = obj.finish_details['type']
             if finish_reason == 'length':
                 yield '\n\n[!] Error: Output truncated due to limit'
-            elif finish_reason == 'normal':
+            elif finish_reason == 'stop':
                 pass
-            else:
-                yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
+            elif finish_reason is not None:
+                if obj.finish_reason is not None:
+                    yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
+                else:
+                    yield f'\n\n[!] Error: finish_details="{obj.finish_details}"'
+            finished = True
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
@@ -497,9 +451,6 @@ async def reply_handler(message):
     photo_message = message if message.photo is not None else extra_photo_message
     photo_hash = None
     if photo_message is not None:
-        await send_message(chat_id, '[!] Error: Images are not supported', msg_id)
-        return
-
         if photo_message.grouped_id is not None:
             await send_message(chat_id, '[!] Error: Grouped photos are not yet supported, but will be supported soon', msg_id)
             return
@@ -524,7 +475,9 @@ async def reply_handler(message):
             return
 
     if photo_hash:
-        new_message = [{'type': 'text', 'text': text}, {'type': 'image', 'hash': photo_hash}]
+        new_message = [{'type': 'image', 'hash': photo_hash}]
+        if text:
+            new_message.append({'type': 'text', 'text': text})
     elif document_text:
         if text:
             new_message = document_text + '\n\n' + text
@@ -567,7 +520,7 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
             except Exception as e:
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, model=%r, task_id=%r, cnt=%r): %s', chat_id, msg_id, model, task_id, error_cnt, e)
-                will_retry = error_cnt <= OPENAI_MAX_RETRY
+                will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
                 error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
                 if will_retry:
                     error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
