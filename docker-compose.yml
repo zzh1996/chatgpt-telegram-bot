@@ -13,7 +13,6 @@ services:
         init: true
         environment:
           - BAIDU_API_KEY=
-          - BAIDU_SECRET_KEY=
           - TELEGRAM_BOT_TOKEN=
           - TELEGRAM_API_ID=
           - TELEGRAM_API_HASH=
