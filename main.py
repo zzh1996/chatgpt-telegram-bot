@@ -11,6 +11,7 @@ import copy
 from collections import defaultdict
 from richtext import RichText
 from anthropic import AsyncAnthropic
+import httpx
 from telethon import TelegramClient, events, errors, functions, types
 import signal
 
@@ -46,7 +47,7 @@ def get_prompt(model):
 aclient = AsyncAnthropic(
     api_key=os.getenv("ANTHROPIC_API_KEY"),
     max_retries=0,
-    timeout=15,
+    timeout=httpx.Timeout(timeout=60, connect=15),
 )
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
@@ -58,6 +59,7 @@ OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 10
 FIRST_BATCH_DELAY = 1
 TEXT_FILE_SIZE_LIMIT = 100_000
+PDF_FILE_SIZE_LIMIT = 32_000_000
 TRIGGERS_LIMIT = 20
 
 telegram_last_timestamp = defaultdict(lambda: None)
@@ -180,6 +182,22 @@ def load_photo(h):
     with open(path, 'rb') as f:
         return f.read()
 
+def save_file(file_blob):
+    h = hashlib.sha256(file_blob).hexdigest()
+    dir = f'files/{h[:2]}/{h[2:4]}'
+    path = f'{dir}/{h}'
+    if not os.path.isfile(path):
+        os.makedirs(dir, exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(file_blob)
+    return h
+
+def load_file(h):
+    dir = f'files/{h[:2]}/{h[2:4]}'
+    path = f'{dir}/{h}'
+    with open(path, 'rb') as f:
+        return f.read()
+
 async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
     chat_history = copy.deepcopy(chat_history)
@@ -209,7 +227,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 if n_cache == 4:
                         break
 
-    def remove_image(messages):
+    def remove_blobs(messages):
         new_messages = copy.deepcopy(messages)
         for message in new_messages:
             if 'content' in message:
@@ -217,8 +235,10 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                     for obj in message['content']:
                         if obj['type'] == 'image':
                             obj['source']['data'] = obj['source']['data'][:50] + '...'
+                        elif obj['type'] == 'document':
+                            obj['source']['data'] = obj['source']['data'][:50] + '...'
         return new_messages
-    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
+    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_blobs(messages))
     if model.endswith(' thinking'):
         stream = await aclient.beta.messages.create(
             model=model.split()[0],
@@ -325,6 +345,10 @@ def construct_chat_history(chat_id, msg_id):
                     blob_base64 = base64.b64encode(blob).decode()
                     new_message.append({'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': blob_base64}})
                     has_image = True
+                elif obj['type'] == 'file':
+                    blob = load_file(obj['file']['hash'])
+                    blob_base64 = base64.b64encode(blob).decode()
+                    new_message.append({'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': blob_base64}})
                 else:
                     raise ValueError('Unknown message type in chat history')
             message = new_message
@@ -531,19 +555,32 @@ async def reply_handler(message):
 
     document_message = message if message.document is not None else extra_document_message
     document_text = None
+    file_hash = None
+    file_name = None
     if document_message is not None:
         if document_message.grouped_id is not None:
             await send_message(chat_id, '[!] Error: Grouped files are not yet supported, but will be supported soon', msg_id)
             return
-        if document_message.document.size > TEXT_FILE_SIZE_LIMIT:
-            await send_message(chat_id, '[!] Error: File too large', msg_id)
-            return
-        document_blob = await document_message.download_media(bytes)
-        try:
-            document_text = document_blob.decode()
-            assert all(c != '\x00' for c in document_text)
-        except:
-            await send_message(chat_id, '[!] Error: File is not text file or not valid UTF-8', msg_id)
+        if document_message.document.mime_type == 'application/pdf':
+            if document_message.document.size > PDF_FILE_SIZE_LIMIT:
+                await send_message(chat_id, '[!] Error: PDF file too large', msg_id)
+                return
+            document_blob = await document_message.download_media(bytes)
+            file_hash = save_file(document_blob)
+            file_name = document_message.document.attributes[0].file_name
+        elif document_message.document.mime_type.startswith('text/'):
+            if document_message.document.size > TEXT_FILE_SIZE_LIMIT:
+                await send_message(chat_id, '[!] Error: Text file too large', msg_id)
+                return
+            document_blob = await document_message.download_media(bytes)
+            try:
+                document_text = document_blob.decode()
+                assert all(c != '\x00' for c in document_text)
+            except:
+                await send_message(chat_id, '[!] Error: Text file is not valid UTF-8', msg_id)
+                return
+        else:
+            await send_message(chat_id, '[!] Error: Unknown file type', msg_id)
             return
 
     if photo_hash:
@@ -552,6 +589,10 @@ async def reply_handler(message):
             new_message.append({'type': 'text', 'text': text})
     elif document_text:
         new_message = [{'type': 'text', 'text': document_text}]
+        if text:
+            new_message.append({'type': 'text', 'text': text})
+    elif file_hash:
+        new_message = [{'type': 'file', 'file': {'filename': file_name, 'hash': file_hash}}]
         if text:
             new_message.append({'type': 'text', 'text': text})
     else:
