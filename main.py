@@ -82,6 +82,7 @@ OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 30
 FIRST_BATCH_DELAY = 1
 TEXT_FILE_SIZE_LIMIT = 10_000_000
+PDF_FILE_SIZE_LIMIT = 32_000_000
 TRIGGERS_LIMIT = 20
 
 telegram_last_timestamp = defaultdict(lambda: None)
@@ -204,6 +205,22 @@ def load_photo(h):
     with open(path, 'rb') as f:
         return f.read()
 
+def save_file(file_blob):
+    h = hashlib.sha256(file_blob).hexdigest()
+    dir = f'files/{h[:2]}/{h[2:4]}'
+    path = f'{dir}/{h}'
+    if not os.path.isfile(path):
+        os.makedirs(dir, exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(file_blob)
+    return h
+
+def load_file(h):
+    dir = f'files/{h[:2]}/{h[2:4]}'
+    path = f'{dir}/{h}'
+    with open(path, 'rb') as f:
+        return f.read()
+
 async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_history = [user, ai, user, ai, ..., user]
     assert len(chat_history) % 2 == 1
     messages=[]
@@ -212,7 +229,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     for msg in chat_history:
         messages.append({"role": roles[role_id], "parts": msg})
         role_id = 1 - role_id
-    def remove_image(messages):
+    def remove_blobs(messages):
         new_messages = copy.deepcopy(messages)
         for message in new_messages:
             if 'parts' in message:
@@ -221,7 +238,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                         if isinstance(obj, dict) and 'data' in obj:
                             obj['data'] = '...'
         return new_messages
-    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
+    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_blobs(messages))
 
     contents = []
     for message in messages:
@@ -229,10 +246,8 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         for part in message['parts']:
             if isinstance(part, str):
                 parts.append(gtypes.Part.from_text(text=part))
-            elif part['mime_type'] == 'image/jpeg':
-                parts.append(gtypes.Part.from_bytes(data=part['data'], mime_type='image/jpeg'))
             else:
-                raise ValueError('Unknown part type')
+                parts.append(gtypes.Part.from_bytes(data=part['data'], mime_type=part['mime_type']))
         contents.append(gtypes.Content(
             role=message['role'],
             parts=parts,
@@ -283,7 +298,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             assert obj.content.parts[0].function_call is None
             assert obj.content.parts[0].function_response is None
             assert obj.content.parts[0].inline_data is None
-        assert obj.citation_metadata is None
+        # assert obj.citation_metadata is None # TODO: show citations
         assert obj.grounding_metadata is None
         assert obj.finish_message is None
         if obj.finish_reason is not None:
@@ -332,6 +347,9 @@ def construct_chat_history(chat_id, msg_id):
                 blob = load_photo(obj['hash'])
                 new_message.append({'mime_type': 'image/jpeg', 'data': blob})
                 has_image = True
+            elif obj['type'] == 'file':
+                blob = load_file(obj['file']['hash'])
+                new_message.append({'mime_type': 'application/pdf', 'data': blob})
             else:
                 raise ValueError('Unknown message type in chat history')
         message = new_message
@@ -542,19 +560,32 @@ async def reply_handler(message):
 
     document_message = message if message.document is not None else extra_document_message
     document_text = None
+    file_hash = None
+    file_name = None
     if document_message is not None:
         if document_message.grouped_id is not None:
             await send_message(chat_id, '[!] Error: Grouped files are not yet supported, but will be supported soon', msg_id)
             return
-        if document_message.document.size > TEXT_FILE_SIZE_LIMIT:
-            await send_message(chat_id, '[!] Error: File too large', msg_id)
-            return
-        document_blob = await document_message.download_media(bytes)
-        try:
-            document_text = document_blob.decode()
-            assert all(c != '\x00' for c in document_text)
-        except:
-            await send_message(chat_id, '[!] Error: File is not text file or not valid UTF-8', msg_id)
+        if document_message.document.mime_type == 'application/pdf':
+            if document_message.document.size > PDF_FILE_SIZE_LIMIT:
+                await send_message(chat_id, '[!] Error: PDF file too large', msg_id)
+                return
+            document_blob = await document_message.download_media(bytes)
+            file_hash = save_file(document_blob)
+            file_name = document_message.document.attributes[0].file_name
+        elif document_message.document.mime_type.startswith('text/'):
+            if document_message.document.size > TEXT_FILE_SIZE_LIMIT:
+                await send_message(chat_id, '[!] Error: Text file too large', msg_id)
+                return
+            document_blob = await document_message.download_media(bytes)
+            try:
+                document_text = document_blob.decode()
+                assert all(c != '\x00' for c in document_text)
+            except:
+                await send_message(chat_id, '[!] Error: Text file is not valid UTF-8', msg_id)
+                return
+        else:
+            await send_message(chat_id, '[!] Error: Unknown file type', msg_id)
             return
 
     if photo_hash:
@@ -566,6 +597,10 @@ async def reply_handler(message):
             new_message = [{'type': 'text', 'text': document_text + '\n\n' + text}]
         else:
             new_message = [{'type': 'text', 'text': document_text}]
+    elif file_hash:
+        new_message = [{'type': 'file', 'file': {'filename': file_name, 'hash': file_hash}}]
+        if text:
+            new_message.append({'type': 'text', 'text': text})
     else:
         new_message = [{'type': 'text', 'text': text}]
 
