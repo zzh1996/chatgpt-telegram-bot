@@ -10,5 +10,6 @@ temp/
 chatlogs/
 docker-compose-prod.yml
 photos/
+files/
 db.db
 bot.session-journal
