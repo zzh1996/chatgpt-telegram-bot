@@ -105,7 +105,7 @@ def get_prompt(model):
 aclient = openai.AsyncOpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     max_retries=0,
-    timeout=15,
+    timeout=60,
 )
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
