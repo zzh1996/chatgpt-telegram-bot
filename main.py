@@ -23,13 +23,16 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'g$', 'model': 'gemini-2.0-pro-exp-02-05'},
+    {'prefix': 'g$', 'model': 'gemini-2.5-pro-exp-03-25'},
+    {'prefix': 'g2$', 'model': 'gemini-2.0-pro-exp-02-05'},
     {'prefix': 'gf$', 'model': 'gemini-2.0-flash'},
     {'prefix': 'gfl$', 'model': 'gemini-2.0-flash-lite-preview-02-05'},
     {'prefix': 'g15$', 'model': 'gemini-1.5-pro-latest'},
     {'prefix': 'g1$', 'model': 'gemini-1.0-pro-latest', 'vision_model': 'gemini-pro-vision'},
     {'prefix': 'gt$', 'model': 'gemini-2.0-flash-thinking-exp-01-21'},
     {'prefix': 'ge$', 'model': 'gemma-3-27b-it'},
+
+    {'prefix': 'gemini-2.5-pro-exp-03-25$', 'model': 'gemini-2.5-pro-exp-03-25'},
 
     {'prefix': 'gemini-2.0-flash$', 'model': 'gemini-2.0-flash'},
     {'prefix': 'gemini-2.0-flash-lite-preview-02-05$', 'model': 'gemini-2.0-flash-lite-preview-02-05'},
