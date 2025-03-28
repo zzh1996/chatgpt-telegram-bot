@@ -24,9 +24,14 @@ ADMIN_ID = 71863318
 MODELS = [
     {'prefix': 'sp$', 'model': 'sonar-pro', 'prompt_template': ''},
     {'prefix': 'sr$', 'model': 'sonar-reasoning', 'prompt_template': ''},
+    {'prefix': 'srp$', 'model': 'sonar-reasoning-pro', 'prompt_template': ''},
+    {'prefix': 'sdr$', 'model': 'sonar-deep-research', 'prompt_template': ''},
     {'prefix': 'sonar$', 'model': 'sonar', 'prompt_template': ''},
     {'prefix': 'sonar-pro$', 'model': 'sonar-pro', 'prompt_template': ''},
     {'prefix': 'sonar-reasoning$', 'model': 'sonar-reasoning', 'prompt_template': ''},
+    {'prefix': 'sonar-reasoning-pro$', 'model': 'sonar-reasoning-pro', 'prompt_template': ''},
+    {'prefix': 'sonar-deep-research$', 'model': 'sonar-deep-research', 'prompt_template': ''},
+    {'prefix': 'r1-1776$', 'model': 'r1-1776', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'sonar-pro' # For compatibility with the old database format
 
@@ -40,7 +45,7 @@ aclient = openai.AsyncOpenAI(
     base_url='https://api.perplexity.ai',
     api_key=os.getenv("PERPLEXITY_API_KEY"),
     max_retries=0,
-    timeout=15,
+    timeout=300,
 )
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
