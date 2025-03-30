@@ -403,8 +403,9 @@ async def list_models_handler(message):
 
 @retry()
 @ensure_interval()
-async def send_message(chat_id, text, reply_to_message_id):
-    logging.info('Sending message: chat_id=%r, reply_to_message_id=%r, text=%r', chat_id, reply_to_message_id, text)
+async def send_message(chat_id, text, reply_to_message_id, thread_id=None):
+    logging.info('Sending message: chat_id=%r, reply_to_message_id=%r, text=%r, thread_id=%r',
+                 chat_id, reply_to_message_id, text, thread_id)
     text = RichText(text)
     text, entities = text.to_telegram()
     msg = await bot.send_message(
@@ -413,14 +414,16 @@ async def send_message(chat_id, text, reply_to_message_id):
         reply_to=reply_to_message_id,
         link_preview=False,
         formatting_entities=entities,
+        **({"message_thread_id": thread_id} if thread_id is not None else {})
     )
     logging.info('Message sent: chat_id=%r, reply_to_message_id=%r, message_id=%r', chat_id, reply_to_message_id, msg.id)
     return msg.id
 
 @retry()
 @ensure_interval()
-async def edit_message(chat_id, text, message_id):
-    logging.info('Editing message: chat_id=%r, message_id=%r, text=%r', chat_id, message_id, text)
+async def edit_message(chat_id, text, message_id, thread_id=None):
+    logging.info('Editing message: chat_id=%r, message_id=%r, text=%r, thread_id=%r',
+                 chat_id, message_id, text, thread_id)
     text = RichText(text)
     text, entities = text.to_telegram()
     try:
@@ -430,6 +433,7 @@ async def edit_message(chat_id, text, message_id):
             text,
             link_preview=False,
             formatting_entities=entities,
+            **({"message_thread_id": thread_id} if thread_id is not None else {})
         )
     except errors.MessageNotModifiedError as e:
         logging.info('Message not modified: chat_id=%r, message_id=%r', chat_id, message_id)
@@ -447,7 +451,7 @@ async def delete_message(chat_id, message_id):
     logging.info('Message deleted: chat_id=%r, message_id=%r', chat_id, message_id)
 
 class BotReplyMessages:
-    def __init__(self, chat_id, orig_msg_id, prefix):
+    def __init__(self, chat_id, orig_msg_id, prefix, thread_id=None):
         self.prefix = prefix
         self.msg_len = TELEGRAM_LENGTH_LIMIT - len(prefix)
         assert self.msg_len > 0
@@ -455,6 +459,7 @@ class BotReplyMessages:
         self.orig_msg_id = orig_msg_id
         self.replied_msgs = []
         self.text = ''
+        self.thread_id = thread_id  # Store thread_id
 
     async def __aenter__(self):
         return self
@@ -477,7 +482,7 @@ class BotReplyMessages:
         for i in range(min(len(slices), len(self.replied_msgs))):
             msg_id, msg_text = self.replied_msgs[i]
             if slices[i] != msg_text:
-                await edit_message(self.chat_id, self.prefix + slices[i], msg_id)
+                await edit_message(self.chat_id, self.prefix + slices[i], msg_id, thread_id=self.thread_id)
                 self.replied_msgs[i] = (msg_id, slices[i])
         if len(slices) > len(self.replied_msgs):
             for i in range(len(self.replied_msgs), len(slices)):
@@ -485,7 +490,7 @@ class BotReplyMessages:
                     reply_to = self.orig_msg_id
                 else:
                     reply_to, _ = self.replied_msgs[i - 1]
-                msg_id = await send_message(self.chat_id, self.prefix + slices[i], reply_to)
+                msg_id = await send_message(self.chat_id, self.prefix + slices[i], reply_to, thread_id=self.thread_id)
                 self.replied_msgs.append((msg_id, slices[i]))
                 pending_reply_manager.add((self.chat_id, msg_id))
         if len(self.replied_msgs) > len(slices):
@@ -509,13 +514,16 @@ async def reply_handler(message):
     sender_id = message.sender_id
     msg_id = message.id
     text = message.message
-    logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r, photo=%s, document=%s', chat_id, sender_id, msg_id, text, message.photo, message.document)
+    thread_id = getattr(message, 'message_thread_id', None)
+    logging.info('New message: chat_id=%r, sender_id=%r, msg_id=%r, text=%r, photo=%s, document=%s, thread_id=%r',
+                 chat_id, sender_id, msg_id, text, message.photo, message.document, thread_id)
     reply_to_id = None
     models = None
     extra_photo_message = None
     extra_document_message = None
     if not text and message.photo is None and message.document is None: # unknown media types
         return
+    is_topic_new_message = False
     if message.is_reply:
         if message.reply_to.quote_text is not None:
             return
@@ -527,9 +535,11 @@ async def reply_handler(message):
             extra_photo_message = reply_to_message
         elif reply_to_message.document is not None: # user reply to a document
             extra_document_message = reply_to_message
+        elif isinstance(reply_to_message.action, types.MessageActionTopicCreate): # user send new message in a forum topic
+            is_topic_new_message = True
         else:
             return
-    if not message.is_reply or extra_photo_message is not None or extra_document_message is not None: # new message
+    if not message.is_reply or extra_photo_message is not None or extra_document_message is not None or is_topic_new_message: # new message
         if '$' not in text:
             if chat_id == sender_id: # if in private chat, send hint
                 await send_message(chat_id, '[!] Error: Please start a new conversation with $ or reply to a bot message', msg_id)
@@ -597,13 +607,13 @@ async def reply_handler(message):
 
     chat_history, model = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
-        await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id)
+        await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id, thread_id=thread_id)
         return
 
     models = models if models is not None else [model]
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
-            tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
+            tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id, thread_id))
 
 def render_reply(reply, info, error, is_generating):
     result = RichText.from_markdown(reply)
@@ -615,13 +625,13 @@ def render_reply(reply, info, error, is_generating):
         result += '\n' + RichText.Italic('[!Generating...]')
     return result
 
-async def process_request(chat_id, msg_id, chat_history, model, task_id):
+async def process_request(chat_id, msg_id, chat_history, model, task_id, thread_id=None):
     error_cnt = 0
     while True:
         reply = ''
         info = ''
         error = ''
-        async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
+        async with BotReplyMessages(chat_id, msg_id, f'[{model}] ', thread_id=thread_id) as replymsgs:
             try:
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
                 first_update_timestamp = None
