@@ -44,7 +44,9 @@ MODELS = [
     {'prefix': 'tr1$', 'model': 'together/deepseek-ai/DeepSeek-R1'},
     {'prefix': 'td3$', 'model': 'together/deepseek-ai/DeepSeek-V3'},
 
-    {'prefix': 'l$', 'model': 'together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo'},
+    {'prefix': 'l$', 'model': 'together/meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8'},
+    {'prefix': 'l4s$', 'model': 'together/meta-llama/Llama-4-Scout-17B-16E-Instruct'},
+    {'prefix': 'l31$', 'model': 'together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo'},
     {'prefix': 'l70$', 'model': 'together/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'},
     {'prefix': 'l8$', 'model': 'together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo'},
     {'prefix': 'l3$', 'model': 'together/meta-llama/Meta-Llama-3-70B-Instruct-Turbo'},
