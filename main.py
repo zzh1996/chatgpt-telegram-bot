@@ -26,6 +26,7 @@ PROVIDERS = {
     'moonshot': {'base_url': 'https://api.moonshot.cn/v1', 'api_key': os.getenv("MOONSHOT_API_KEY")},
     'hyperbolic': {'base_url': 'https://api.hyperbolic.xyz/v1', 'api_key': os.getenv("HYPERBOLIC_API_KEY")},
     'fireworks': {'base_url': 'https://api.fireworks.ai/inference/v1', 'api_key': os.getenv("FIREWORKS_API_KEY")},
+    'openrouter': {'base_url': 'https://openrouter.ai/api/v1', 'api_key': os.getenv("OPENROUTER_API_KEY")},
 }
 
 MODELS = [
@@ -53,6 +54,8 @@ MODELS = [
     {'prefix': 'l33$', 'model': 'together/meta-llama/Llama-3.3-70B-Instruct-Turbo'},
     {'prefix': 'ge2$', 'model': 'together/google/gemma-2-27b-it'},
     {'prefix': 'nv$', 'model': 'together/nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'},
+
+    {'prefix': 'qa$', 'model': 'openrouter/openrouter/quasar-alpha'},
 ]
 
 VISION_MODELS = {
