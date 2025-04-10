@@ -58,6 +58,7 @@ MODELS = [
     {'prefix': 'nv$', 'model': 'together/nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'},
 
     {'prefix': 'qa$', 'model': 'openrouter/openrouter/quasar-alpha'},
+    {'prefix': 'oa$', 'model': 'openrouter/openrouter/optimus-alpha'},
 ]
 
 VISION_MODELS = {
