@@ -56,6 +56,8 @@ MODELS = [
     {'prefix': 'o1-2024-12-17$', 'model': 'o1-2024-12-17', 'prompt_template': ''},
     {'prefix': 'o3-mini$', 'model': 'o3-mini', 'prompt_template': ''},
     {'prefix': 'o3-mini-2025-01-31$', 'model': 'o3-mini-2025-01-31', 'prompt_template': ''},
+    {'prefix': 'o1-pro$', 'model': 'o1-pro', 'prompt_template': ''},
+    {'prefix': 'o1-pro-2025-03-19$', 'model': 'o1-pro-2025-03-19', 'prompt_template': ''},
 
     {'prefix': 'chatgpt-4o-latest$', 'model': 'chatgpt-4o-latest', 'prompt_template': GPT_4O_PROMPT},
     {'prefix': 'chatgpt$', 'model': 'chatgpt-4o-latest', 'prompt_template': GPT_4O_PROMPT},
@@ -94,6 +96,8 @@ PRICING = {
     'o3-mini-2025-01-31': (1.1e-6, 4.4e-6, 0.55e-6),
     'gpt-4.5-preview': (75e-6, 150e-6, 37.5e-6),
     'gpt-4.5-preview-2025-02-27': (75e-6, 150e-6, 37.5e-6),
+    'o1-pro': (150e-6, 600e-6, 150e-6),
+    'o1-pro-2025-03-19': (150e-6, 600e-6, 150e-6),
 }
 
 def get_prompt(model):
@@ -277,87 +281,179 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['file']['file_data'] = obj['file']['file_data'][:50] + '...'
         return new_messages
 
+    def convert_to_responses_api_input_format(messages):
+        system_prompt = None
+        new_messages = []
+        for message in messages:
+            if message['role'] == 'system':
+                system_prompt = message['content']
+                continue
+            elif message['role'] == 'user':
+                new_message_content = []
+                if isinstance(message['content'], list):
+                    for item in message['content']:
+                        if item['type'] == 'text':
+                            new_message_content.append({'type': 'input_text', 'text': item['text']})
+                        elif item['type'] == 'image_url':
+                            new_message_content.append({'type': 'input_image', 'image_url': item['image_url']['url'], 'detail': item['image_url']['detail']})
+                        elif item['type'] == 'file':
+                            new_message_content.append({'type': 'input_file', 'filename': item['file']['filename'], 'file_data': item['file']['file_data']})
+                        else:
+                            raise ValueError('Unknown message type in chat history')
+                else:
+                    new_message_content.append({'type': 'input_text', 'text': message['content']})
+                new_messages.append({'role': message['role'], 'content': new_message_content})
+            elif message['role'] == 'assistant':
+                if isinstance(message['content'], list):
+                    assert len(message['content']) == 1 and message['content'][0]['type'] == 'text'
+                    new_messages.append({'role': message['role'], 'content': message['content'][0]['text']})
+                else:
+                    new_messages.append({'role': message['role'], 'content': message['content']})
+            else:
+                raise ValueError('Unknown role in chat history')
+        return new_messages, system_prompt
+
     is_reasoning_model = model.startswith('o')
     support_stream = True # As of 2025-02-14, o1 supports streaming
-    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31']
+    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19']
     is_search_model = 'search' in model
-    kwargs = {'model': model}
-    if support_stream:
-        kwargs['stream'] = True
-        kwargs['stream_options'] = {"include_usage": True}
-    if is_reasoning_model:
-        kwargs['timeout'] = httpx.Timeout(timeout=3600, connect=15)
-    if support_reasoning_effort:
-        kwargs['reasoning_effort'] = 'high'
-    if is_search_model:
-        kwargs['web_search_options'] = {'search_context_size': 'high'}
-    logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r, args=%r): %s', chat_id, msg_id, task_id, model, kwargs, remove_blobs(messages))
-    kwargs['messages'] = messages
-    if is_reasoning_model:
-        async with bot.action(chat_id, 'typing'):
-            stream = await aclient.chat.completions.create(**kwargs)
-    else:
-        stream = await aclient.chat.completions.create(**kwargs)
-    if not support_stream:
-        async def to_aiter(x):
-            yield x
-        stream = to_aiter(stream)
-
-    finished = False
-    async for response in stream:
-        logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
-        if model in PRICING and response.usage is not None:
-            usage_text = f"Prompt tokens: {response.usage.prompt_tokens}\n"
-            cached_prompt_tokens = 0
-            if response.usage.prompt_tokens_details is not None:
-                if response.usage.prompt_tokens_details.cached_tokens is not None:
-                    if response.usage.prompt_tokens_details.cached_tokens > 0:
-                        cached_prompt_tokens = response.usage.prompt_tokens_details.cached_tokens
-                        usage_text += f"Cached prompt tokens: {cached_prompt_tokens}\n"
-            if response.usage.completion_tokens_details is not None:
-                if response.usage.completion_tokens_details.reasoning_tokens is not None:
-                    if response.usage.completion_tokens_details.reasoning_tokens > 0:
-                        usage_text += f"Reasoning tokens: {response.usage.completion_tokens_details.reasoning_tokens}\n"
-            usage_text += f"Completion tokens: {response.usage.completion_tokens}\n"
-            input_price, output_price, cached_price = PRICING[model]
-            cost = (response.usage.prompt_tokens - cached_prompt_tokens) * input_price + response.usage.completion_tokens * output_price + cached_prompt_tokens * cached_price
-            usage_text += f"Cost: ${cost:.2f}\n"
-            yield {'type': 'info', 'text': usage_text}
-        if finished:
-            assert len(response.choices) == 0
-            continue
-        obj = response.choices[0]
-        if hasattr(obj, 'delta'):
-            delta = obj.delta
+    is_responses_api = model.startswith('o1-pro')
+    if not is_responses_api:
+        kwargs = {'model': model}
+        if support_stream:
+            kwargs['stream'] = True
+            kwargs['stream_options'] = {"include_usage": True}
+        if is_reasoning_model:
+            kwargs['timeout'] = httpx.Timeout(timeout=3600, connect=15)
+        if support_reasoning_effort:
+            kwargs['reasoning_effort'] = 'high'
+        if is_search_model:
+            kwargs['web_search_options'] = {'search_context_size': 'high'}
+        logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r, args=%r): %s', chat_id, msg_id, task_id, model, kwargs, remove_blobs(messages))
+        kwargs['messages'] = messages
+        if is_reasoning_model:
+            async with bot.action(chat_id, 'typing'):
+                stream = await aclient.chat.completions.create(**kwargs)
         else:
-            delta = obj.message
-        if delta.role is not None:
-            if delta.role != 'assistant':
-                raise ValueError("Role error")
-        if delta.content is not None:
-            yield {'type': 'text', 'text': delta.content}
-        if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
+            stream = await aclient.chat.completions.create(**kwargs)
+        if not support_stream:
+            async def to_aiter(x):
+                yield x
+            stream = to_aiter(stream)
+
+        finished = False
+        async for response in stream:
+            logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
+            if model in PRICING and response.usage is not None:
+                usage_text = f"Prompt tokens: {response.usage.prompt_tokens}\n"
+                cached_prompt_tokens = 0
+                if response.usage.prompt_tokens_details is not None:
+                    if response.usage.prompt_tokens_details.cached_tokens is not None:
+                        if response.usage.prompt_tokens_details.cached_tokens > 0:
+                            cached_prompt_tokens = response.usage.prompt_tokens_details.cached_tokens
+                            usage_text += f"Cached prompt tokens: {cached_prompt_tokens}\n"
+                if response.usage.completion_tokens_details is not None:
+                    if response.usage.completion_tokens_details.reasoning_tokens is not None:
+                        if response.usage.completion_tokens_details.reasoning_tokens > 0:
+                            usage_text += f"Reasoning tokens: {response.usage.completion_tokens_details.reasoning_tokens}\n"
+                usage_text += f"Completion tokens: {response.usage.completion_tokens}\n"
+                input_price, output_price, cached_price = PRICING[model]
+                cost = (response.usage.prompt_tokens - cached_prompt_tokens) * input_price + response.usage.completion_tokens * output_price + cached_prompt_tokens * cached_price
+                usage_text += f"Cost: ${cost:.2f}\n"
+                yield {'type': 'info', 'text': usage_text}
+            if finished:
+                assert len(response.choices) == 0
+                continue
+            obj = response.choices[0]
             if hasattr(obj, 'delta'):
-                assert all(item is None for item in [
-                    delta.content,
-                    delta.function_call,
-                    delta.role,
-                    delta.tool_calls,
-                ])
-            finish_reason = obj.finish_reason
-            if 'finish_details' in obj.model_extra and obj.finish_details is not None:
-                assert finish_reason is None
-                finish_reason = obj.finish_details['type']
-            if finish_reason == 'length':
-                yield {'type': 'error', 'text': '[!] Error: Output truncated due to limit\n'}
-            elif finish_reason == 'stop':
+                delta = obj.delta
+            else:
+                delta = obj.message
+            if delta.role is not None:
+                if delta.role != 'assistant':
+                    raise ValueError("Role error")
+            if delta.content is not None:
+                yield {'type': 'text', 'text': delta.content}
+            if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
+                if hasattr(obj, 'delta'):
+                    assert all(item is None for item in [
+                        delta.content,
+                        delta.function_call,
+                        delta.role,
+                        delta.tool_calls,
+                    ])
+                finish_reason = obj.finish_reason
+                if 'finish_details' in obj.model_extra and obj.finish_details is not None:
+                    assert finish_reason is None
+                    finish_reason = obj.finish_details['type']
+                if finish_reason == 'length':
+                    yield {'type': 'error', 'text': '[!] Error: Output truncated due to limit\n'}
+                elif finish_reason == 'stop':
+                    pass
+                elif finish_reason is not None:
+                    if obj.finish_reason is not None:
+                        yield {'type': 'error', 'text': f'[!] Error: finish_reason="{finish_reason}"\n'}
+                    else:
+                        yield {'type': 'error', 'text': f'[!] Error: finish_details="{obj.finish_details}"\n'}
+                finished = True
+    else:
+        kwargs = {'model': model}
+        kwargs['stream'] = True
+        if is_reasoning_model:
+            kwargs['timeout'] = httpx.Timeout(timeout=3600, connect=15)
+        if support_reasoning_effort:
+            kwargs['reasoning'] = {'effort': 'high'}
+        logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r, args=%r): %s', chat_id, msg_id, task_id, model, kwargs, remove_blobs(messages))
+        input_, instructions = convert_to_responses_api_input_format(messages)
+        kwargs['input'] = input_
+        if instructions is not None:
+            kwargs['instructions'] = instructions
+        stream = await aclient.responses.create(**kwargs)
+
+        async for response in stream:
+            logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
+            if response.type == 'response.created':
                 pass
-            elif finish_reason is not None:
-                if obj.finish_reason is not None:
-                    yield {'type': 'error', 'text': f'[!] Error: finish_reason="{finish_reason}"\n'}
-                else:
-                    yield {'type': 'error', 'text': f'[!] Error: finish_details="{obj.finish_details}"\n'}
-            finished = True
+            elif response.type == 'response.in_progress':
+                pass
+            elif response.type == 'response.output_item.added':
+                pass
+            elif response.type == 'response.output_item.done':
+                pass
+            elif response.type == 'response.content_part.added':
+                assert response.part.type == 'output_text'
+            elif response.type == 'response.content_part.done':
+                pass
+            elif response.type == 'response.completed':
+                if model in PRICING:
+                    input_tokens = response.response.usage.input_tokens
+                    cached_tokens = response.response.usage.input_tokens_details.cached_tokens
+                    output_tokens = response.response.usage.output_tokens
+                    reasoning_tokens = response.response.usage.output_tokens_details.reasoning_tokens
+                    usage_text = f"Input tokens: {input_tokens}\n"
+                    if cached_tokens > 0:
+                        usage_text += f"Cached tokens: {cached_tokens}\n"
+                    usage_text += f"Output tokens: {output_tokens}\n"
+                    if reasoning_tokens > 0:
+                        usage_text += f"Reasoning tokens: {reasoning_tokens}\n"
+                    input_price, output_price, cached_price = PRICING[model]
+                    cost = (input_tokens - cached_tokens) * input_price + output_tokens * output_price + cached_tokens * cached_price
+                    usage_text += f"Cost: ${cost:.2f}\n"
+                    yield {'type': 'info', 'text': usage_text}
+            elif response.type == 'response.failed':
+                error_code = response.response.error.code
+                error_message = response.response.error.message
+                yield {'type': 'error', 'text': f'[!] Error: {error_code}: {error_message}\n'}
+            elif response.type == 'response.incomplete':
+                yield {'type': 'error', 'text': f'[!] Error: Incomplete response: {response.response.incomplete_details.reason}\n'}
+            elif response.type == 'error':
+                yield {'type': 'error', 'text': f'[!] Error: {response}\n'}
+            elif response.type == 'response.output_text.delta':
+                yield {'type': 'text', 'text': response.delta}
+            elif response.type == 'response.output_text.done':
+                pass
+            else:
+                raise ValueError(f"Unknown response type: {response.type}")
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
