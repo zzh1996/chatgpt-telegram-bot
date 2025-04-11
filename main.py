@@ -85,19 +85,43 @@ MODELS = [
 ]
 DEFAULT_MODEL = 'gpt-4-0613' # For compatibility with the old database format
 
+SHOW_COST_THRESHOLD = 0.1
 PRICING = {
-    'o1': (15e-6, 60e-6, 7.5e-6),
-    'o1-2024-12-17': (15e-6, 60e-6, 7.5e-6),
-    'o1-preview': (15e-6, 60e-6, 7.5e-6),
-    'o1-preview-2024-09-12': (15e-6, 60e-6, 7.5e-6),
-    'o1-mini': (1.1e-6, 4.4e-6, 0.55e-6),
-    'o1-mini-2024-09-12': (1.1e-6, 4.4e-6, 0.55e-6),
-    'o3-mini': (1.1e-6, 4.4e-6, 0.55e-6),
-    'o3-mini-2025-01-31': (1.1e-6, 4.4e-6, 0.55e-6),
-    'gpt-4.5-preview': (75e-6, 150e-6, 37.5e-6),
-    'gpt-4.5-preview-2025-02-27': (75e-6, 150e-6, 37.5e-6),
-    'o1-pro': (150e-6, 600e-6, 150e-6),
-    'o1-pro-2025-03-19': (150e-6, 600e-6, 150e-6),
+    'o1': (15, 60, 7.5, True),
+    'o1-2024-12-17': (15, 60, 7.5, True),
+    'o1-preview': (15, 60, 7.5, True),
+    'o1-preview-2024-09-12': (15, 60, 7.5, True),
+    'o1-mini': (1.1, 4.4, 0.55, True),
+    'o1-mini-2024-09-12': (1.1, 4.4, 0.55, True),
+    'o3-mini': (1.1, 4.4, 0.55, True),
+    'o3-mini-2025-01-31': (1.1, 4.4, 0.55, True),
+    'gpt-4.5-preview': (75, 150, 37.5, True),
+    'gpt-4.5-preview-2025-02-27': (75, 150, 37.5, True),
+    'o1-pro': (150, 600, 150, True),
+    'o1-pro-2025-03-19': (150, 600, 150, True),
+
+    'chatgpt-4o-latest': (5, 15, 5, False),
+    'gpt-3.5-turbo-0125': (0.5, 1.5, 0.5, False),
+    'gpt-3.5-turbo-0301': (1.5, 2, 1.5, False),
+    'gpt-3.5-turbo-0613': (1.5, 2, 1.5, False),
+    'gpt-3.5-turbo-1106': (1, 2, 1, False),
+    'gpt-3.5-turbo-16k-0613': (3, 4, 3, False),
+    'gpt-4-0125-preview': (10, 30, 10, False),
+    'gpt-4-0613': (30, 60, 30, False),
+    'gpt-4-1106-preview': (10, 30, 10, False),
+    'gpt-4-1106-vision-preview': (10, 30, 10, False),
+    'gpt-4-32k-0613': (60, 120, 60, False),
+    'gpt-4-turbo-2024-04-09': (10, 30, 10, False),
+    'gpt-4o': (2.5, 10, 1.25, False),
+    'gpt-4o-2024-05-13': (5, 15, 5, False),
+    'gpt-4o-2024-08-06': (2.5, 10, 1.25, False),
+    'gpt-4o-2024-11-20': (2.5, 10, 1.25, False),
+    'gpt-4o-mini': (0.15, 0.6, 0.075, False),
+    'gpt-4o-mini-2024-07-18': (0.15, 0.6, 0.075, False),
+    'gpt-4o-mini-search-preview': (0.15, 0.6, 0.15, False),
+    'gpt-4o-mini-search-preview-2025-03-11': (0.15, 0.6, 0.15, False),
+    'gpt-4o-search-preview': (2.5, 10, 2.5, False),
+    'gpt-4o-search-preview-2025-03-11': (2.5, 10, 2.5, False),
 }
 
 def get_prompt(model):
@@ -357,10 +381,11 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                         if response.usage.completion_tokens_details.reasoning_tokens > 0:
                             usage_text += f"Reasoning tokens: {response.usage.completion_tokens_details.reasoning_tokens}\n"
                 usage_text += f"Completion tokens: {response.usage.completion_tokens}\n"
-                input_price, output_price, cached_price = PRICING[model]
-                cost = (response.usage.prompt_tokens - cached_prompt_tokens) * input_price + response.usage.completion_tokens * output_price + cached_prompt_tokens * cached_price
+                input_price, output_price, cached_price, always_show_cost = PRICING[model]
+                cost = ((response.usage.prompt_tokens - cached_prompt_tokens) * input_price + response.usage.completion_tokens * output_price + cached_prompt_tokens * cached_price) / 1e6
                 usage_text += f"Cost: ${cost:.2f}\n"
-                yield {'type': 'info', 'text': usage_text}
+                if always_show_cost or cost >= SHOW_COST_THRESHOLD:
+                    yield {'type': 'info', 'text': usage_text}
             if finished:
                 assert len(response.choices) == 0
                 continue
@@ -436,10 +461,11 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                     usage_text += f"Output tokens: {output_tokens}\n"
                     if reasoning_tokens > 0:
                         usage_text += f"Reasoning tokens: {reasoning_tokens}\n"
-                    input_price, output_price, cached_price = PRICING[model]
-                    cost = (input_tokens - cached_tokens) * input_price + output_tokens * output_price + cached_tokens * cached_price
+                    input_price, output_price, cached_price, always_show_cost = PRICING[model]
+                    cost = ((input_tokens - cached_tokens) * input_price + output_tokens * output_price + cached_tokens * cached_price) / 1e6
                     usage_text += f"Cost: ${cost:.2f}\n"
-                    yield {'type': 'info', 'text': usage_text}
+                    if always_show_cost or cost >= SHOW_COST_THRESHOLD:
+                        yield {'type': 'info', 'text': usage_text}
             elif response.type == 'response.failed':
                 error_code = response.response.error.code
                 error_message = response.response.error.message
