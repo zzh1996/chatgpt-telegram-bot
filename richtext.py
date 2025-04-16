@@ -24,8 +24,8 @@ class RichText:
         return RichText([{'type': 'italic', 'content': RichText(s)}])
 
     @classmethod
-    def Quote(cls, s):
-        return RichText([{'type': 'quote', 'content': RichText(s)}])
+    def Quote(cls, s, collapsed=False):
+        return RichText([{'type': 'quote', 'content': RichText(s), 'collapsed': collapsed}])
 
     @classmethod
     def Code(cls, s):
@@ -184,7 +184,7 @@ class RichText:
                 entities.extend(e)
                 start, length = strip_entity(t)
                 if length:
-                    entities.append(types.MessageEntityBlockquote(offset + start, length))
+                    entities.append(types.MessageEntityBlockquote(offset + start, length, collapsed=True if c['collapsed'] else None))
                 offset += utf16len(t)
             elif c['type'] == 'code':
                 text += c['content']

@@ -356,8 +356,9 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     is_reasoning_model = model.startswith('o')
     support_stream = True # As of 2025-02-14, o1 supports streaming
     support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16']
+    support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16']
     is_search_model = 'search' in model
-    is_responses_api = model.startswith('o1-pro')
+    is_responses_api = model.startswith('o1-pro') or support_reasoning_summary
     if not is_responses_api:
         kwargs = {'model': model}
         if support_stream:
@@ -443,7 +444,13 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         if is_reasoning_model:
             kwargs['timeout'] = httpx.Timeout(timeout=3600, connect=15)
         if support_reasoning_effort:
-            kwargs['reasoning'] = {'effort': 'high'}
+            if 'reasoning' not in kwargs:
+                kwargs['reasoning'] = {}
+            kwargs['reasoning']['effort'] = 'high'
+        if support_reasoning_summary:
+            if 'reasoning' not in kwargs:
+                kwargs['reasoning'] = {}
+            kwargs['reasoning']['summary'] = 'detailed'
         logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r, args=%r): %s', chat_id, msg_id, task_id, model, kwargs, remove_blobs(messages))
         input_, instructions = convert_to_responses_api_input_format(messages)
         kwargs['input'] = input_
@@ -493,6 +500,14 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             elif response.type == 'response.output_text.delta':
                 yield {'type': 'text', 'text': response.delta}
             elif response.type == 'response.output_text.done':
+                pass
+            elif response.type ==  'response.reasoning_summary_part.added':
+                pass
+            elif response.type == 'response.reasoning_summary_text.delta':
+                yield {'type': 'reasoning', 'text': response.delta}
+            elif response.type == 'response.reasoning_summary_text.done':
+                pass
+            elif response.type == 'response.reasoning_summary_part.done':
                 pass
             else:
                 raise ValueError(f"Unknown response type: {response.type}")
@@ -792,8 +807,10 @@ async def reply_handler(message):
         for task_id, m in enumerate(models):
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
-def render_reply(reply, info, error, is_generating):
+def render_reply(reply, info, error, reasoning, is_generating):
     result = RichText.from_markdown(reply)
+    if reasoning:
+        result = RichText.Quote(reasoning, not is_generating) + '\n' + result
     if info:
         result += '\n' + RichText.Quote(info)
     if error:
@@ -808,6 +825,7 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
         reply = ''
         info = ''
         error = ''
+        reasoning = ''
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
@@ -819,11 +837,13 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                         error += delta['text']
                     elif delta['type'] == 'info':
                         info += delta['text']
+                    elif delta['type'] == 'reasoning':
+                        reasoning += delta['text']
                     if first_update_timestamp is None:
                         first_update_timestamp = time.time()
                     if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
-                        await replymsgs.update(render_reply(reply, info, error, True))
-                await replymsgs.update(render_reply(reply, info, error, False))
+                        await replymsgs.update(render_reply(reply, info, error, reasoning, True))
+                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
                     db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
@@ -835,7 +855,7 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                 error += f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}\n'
                 if will_retry:
                     error += f'Retrying ({error_cnt}/{OPENAI_MAX_RETRY})...\n'
-                await replymsgs.update(render_reply(reply, info, error, False))
+                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 if will_retry:
                     await asyncio.sleep(OPENAI_RETRY_INTERVAL)
                 if not will_retry:
