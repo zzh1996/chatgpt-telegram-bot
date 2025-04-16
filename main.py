@@ -31,6 +31,11 @@ GPT_4O_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, base
 MODELS = [
     {'prefix': '$', 'model': 'chatgpt-4o-latest', 'prompt_template': GPT_4O_PROMPT},
 
+    {'prefix': 'o3$', 'model': 'o3', 'prompt_template': ''},
+    {'prefix': 'o3-2025-04-16$', 'model': 'o3-2025-04-16', 'prompt_template': ''},
+    {'prefix': 'o4m$', 'model': 'o4-mini', 'prompt_template': ''},
+    {'prefix': 'o4-mini-2025-04-16$', 'model': 'o4-mini-2025-04-16', 'prompt_template': ''},
+
     {'prefix': '41$', 'model': 'gpt-4.1', 'prompt_template': ''},
     {'prefix': 'gpt-4.1-2025-04-14$', 'model': 'gpt-4.1-2025-04-14', 'prompt_template': ''},
     {'prefix': '41m$', 'model': 'gpt-4.1-mini', 'prompt_template': ''},
@@ -106,6 +111,10 @@ PRICING = {
     'gpt-4.5-preview-2025-02-27': (75, 150, 37.5, True),
     'o1-pro': (150, 600, 150, True),
     'o1-pro-2025-03-19': (150, 600, 150, True),
+    'o3': (10, 40, 2.5, True),
+    'o3-2025-04-16': (10, 40, 2.5, True),
+    'o4-mini': (1.1, 4.4, 0.275, True),
+    'o4-mini-2025-04-16': (1.1, 4.4, 0.275, True),
 
     'chatgpt-4o-latest': (5, 15, 5, False),
     'gpt-3.5-turbo-0125': (0.5, 1.5, 0.5, False),
