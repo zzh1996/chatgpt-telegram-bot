@@ -502,13 +502,13 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             elif response.type == 'response.output_text.done':
                 pass
             elif response.type ==  'response.reasoning_summary_part.added':
-                pass
+                assert response.part['type'] == 'summary_text'
             elif response.type == 'response.reasoning_summary_text.delta':
                 yield {'type': 'reasoning', 'text': response.delta}
             elif response.type == 'response.reasoning_summary_text.done':
                 pass
             elif response.type == 'response.reasoning_summary_part.done':
-                pass
+                yield {'type': 'reasoning_delimiter'}
             else:
                 raise ValueError(f"Unknown response type: {response.type}")
 
@@ -808,9 +808,11 @@ async def reply_handler(message):
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
 def render_reply(reply, info, error, reasoning, is_generating):
-    result = RichText.from_markdown(reply)
-    if reasoning:
-        result = RichText.Quote(reasoning, not is_generating) + '\n' + result
+    result = ''
+    for part in reasoning:
+        if part:
+            result += RichText.Quote(part, not is_generating) + '\n'
+    result += RichText.from_markdown(reply)
     if info:
         result += '\n' + RichText.Quote(info)
     if error:
@@ -825,7 +827,7 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
         reply = ''
         info = ''
         error = ''
-        reasoning = ''
+        reasoning = []
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
@@ -838,7 +840,12 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                     elif delta['type'] == 'info':
                         info += delta['text']
                     elif delta['type'] == 'reasoning':
-                        reasoning += delta['text']
+                        if not reasoning:
+                            reasoning.append('')
+                        reasoning[-1] += delta['text']
+                    elif delta['type'] == 'reasoning_delimiter':
+                        if reasoning and reasoning[-1]:
+                            reasoning.append('')
                     if first_update_timestamp is None:
                         first_update_timestamp = time.time()
                     if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
