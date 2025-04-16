@@ -355,7 +355,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
 
     is_reasoning_model = model.startswith('o')
     support_stream = True # As of 2025-02-14, o1 supports streaming
-    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19']
+    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16']
     is_search_model = 'search' in model
     is_responses_api = model.startswith('o1-pro')
     if not is_responses_api:
