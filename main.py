@@ -16,6 +16,7 @@ from google.genai import errors as gerrors
 from telethon import TelegramClient, events, errors, functions, types
 import signal
 import re
+from contextlib import asynccontextmanager
 
 def debug_signal_handler(signal, frame):
     breakpoint()
@@ -81,13 +82,10 @@ TELEGRAM_LENGTH_LIMIT = 4096
 TELEGRAM_MIN_INTERVAL = 3
 OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 30
-FIRST_BATCH_DELAY = 1
+SEND_BATCH_DELAY = 1
 TEXT_FILE_SIZE_LIMIT = 10_000_000
 FILE_SIZE_LIMIT = 32_000_000
 TRIGGERS_LIMIT = 20
-
-telegram_last_timestamp = defaultdict(lambda: None)
-telegram_rate_limit_lock = defaultdict(asyncio.Lock)
 
 class PendingReplyManager:
     def __init__(self):
@@ -110,30 +108,45 @@ class PendingReplyManager:
         await self.messages[reply_id].wait()
         logging.info('PendingReplyManager waiting for %r finished', reply_id)
 
-def within_interval(chat_id):
-    if telegram_rate_limit_lock[chat_id].locked():
-        return True
-    global telegram_last_timestamp
-    if telegram_last_timestamp[chat_id] is None:
-        return False
-    remaining_time = telegram_last_timestamp[chat_id] + TELEGRAM_MIN_INTERVAL - time.time()
-    return remaining_time > 0
+class RateLimitManager:
+    def __init__(self):
+        self.locks = defaultdict(asyncio.Lock)
+        self.last_timestamps = defaultdict(int)
 
-def ensure_interval(interval=TELEGRAM_MIN_INTERVAL):
-    def decorator(func):
-        async def new_func(*args, **kwargs):
-            chat_id = args[0]
-            async with telegram_rate_limit_lock[chat_id]:
-                global telegram_last_timestamp
-                if telegram_last_timestamp[chat_id] is not None:
-                    remaining_time = telegram_last_timestamp[chat_id] + interval - time.time()
-                    if remaining_time > 0:
-                        await asyncio.sleep(remaining_time)
-                result = await func(*args, **kwargs)
-                telegram_last_timestamp[chat_id] = time.time()
-                return result
-        return new_func
-    return decorator
+    @asynccontextmanager
+    async def session(self, chat_id):
+        lock = self.locks[chat_id]
+        await lock.acquire()
+        handle = _RateLimitSessionHandle(self, chat_id)
+        try:
+            yield handle
+        finally:
+            handle._invalidate()
+            remaining_time = self.get_remaining_time(chat_id)
+            if remaining_time > 0:
+                asyncio.get_running_loop().call_later(remaining_time, lock.release)
+            else:
+                lock.release()
+
+    def get_remaining_time(self, chat_id):
+        return max(self.last_timestamps[chat_id] + TELEGRAM_MIN_INTERVAL - time.time(), 0)
+
+def ensure_interval(func):
+    async def new_func(self, *args, **kwargs):
+        remaining_time = self.manager.get_remaining_time(self.chat_id)
+        if remaining_time > 0:
+            await asyncio.sleep(remaining_time)
+        result = await func(self, *args, **kwargs)
+        self.manager.last_timestamps[self.chat_id] = time.time()
+        return result
+    return new_func
+
+def check_alive(func):
+    async def new_func(self, *args, **kwargs):
+        if not self._alive:
+            raise RuntimeError("Session invalid")
+        return await func(self, *args, **kwargs)
+    return new_func
 
 def retry(max_retry=30, interval=10):
     def decorator(func):
@@ -147,6 +160,68 @@ def retry(max_retry=30, interval=10):
             return await func(*args, **kwargs)
         return new_func
     return decorator
+
+class _RateLimitSessionHandle:
+    def __init__(self, manager, chat_id):
+        self.manager = manager
+        self.chat_id = chat_id
+        self._alive = True
+
+    def _invalidate(self):
+        self._alive = False
+
+    @check_alive
+    @retry()
+    @ensure_interval
+    async def send_message(self, text, reply_to_message_id):
+        logging.info('Sending message: chat_id=%r, reply_to_message_id=%r, text=%r', self.chat_id, reply_to_message_id, text)
+        text = RichText(text)
+        text, entities = text.to_telegram()
+        msg = await bot.send_message(
+            self.chat_id,
+            text,
+            reply_to=reply_to_message_id,
+            link_preview=False,
+            formatting_entities=entities,
+        )
+        logging.info('Message sent: chat_id=%r, reply_to_message_id=%r, message_id=%r', self.chat_id, reply_to_message_id, msg.id)
+        return msg.id
+
+    @check_alive
+    @retry()
+    @ensure_interval
+    async def edit_message(self, text, message_id):
+        logging.info('Editing message: chat_id=%r, message_id=%r, text=%r', self.chat_id, message_id, text)
+        text = RichText(text)
+        text, entities = text.to_telegram()
+        try:
+            await bot.edit_message(
+                self.chat_id,
+                message_id,
+                text,
+                link_preview=False,
+                formatting_entities=entities,
+            )
+        except errors.MessageNotModifiedError as e:
+            logging.info('Message not modified: chat_id=%r, message_id=%r', self.chat_id, message_id)
+        else:
+            logging.info('Message edited: chat_id=%r, message_id=%r', self.chat_id, message_id)
+
+    @check_alive
+    @retry()
+    @ensure_interval
+    async def delete_message(self, message_id):
+        logging.info('Deleting message: chat_id=%r, message_id=%r', self.chat_id, message_id)
+        await bot.delete_messages(
+            self.chat_id,
+            message_id,
+        )
+        logging.info('Message deleted: chat_id=%r, message_id=%r', self.chat_id, message_id)
+
+async def send_message(chat_id, text, reply_to_message_id):
+    async with BotReplyMessages(chat_id, reply_to_message_id, '') as b:
+        b.update(text)
+        await b.finalize()
 
 def is_whitelist(chat_id):
     whitelist = db['whitelist']
@@ -402,51 +477,6 @@ async def list_models_handler(message):
         text += f'Prefix: "{m["prefix"]}", model: {m["model"]}\n'
     await send_message(message.chat_id, text, message.id)
 
-@retry()
-@ensure_interval()
-async def send_message(chat_id, text, reply_to_message_id):
-    logging.info('Sending message: chat_id=%r, reply_to_message_id=%r, text=%r', chat_id, reply_to_message_id, text)
-    text = RichText(text)
-    text, entities = text.to_telegram()
-    msg = await bot.send_message(
-        chat_id,
-        text,
-        reply_to=reply_to_message_id,
-        link_preview=False,
-        formatting_entities=entities,
-    )
-    logging.info('Message sent: chat_id=%r, reply_to_message_id=%r, message_id=%r', chat_id, reply_to_message_id, msg.id)
-    return msg.id
-
-@retry()
-@ensure_interval()
-async def edit_message(chat_id, text, message_id):
-    logging.info('Editing message: chat_id=%r, message_id=%r, text=%r', chat_id, message_id, text)
-    text = RichText(text)
-    text, entities = text.to_telegram()
-    try:
-        await bot.edit_message(
-            chat_id,
-            message_id,
-            text,
-            link_preview=False,
-            formatting_entities=entities,
-        )
-    except errors.MessageNotModifiedError as e:
-        logging.info('Message not modified: chat_id=%r, message_id=%r', chat_id, message_id)
-    else:
-        logging.info('Message edited: chat_id=%r, message_id=%r', chat_id, message_id)
-
-@retry()
-@ensure_interval()
-async def delete_message(chat_id, message_id):
-    logging.info('Deleting message: chat_id=%r, message_id=%r', chat_id, message_id)
-    await bot.delete_messages(
-        chat_id,
-        message_id,
-    )
-    logging.info('Message deleted: chat_id=%r, message_id=%r', chat_id, message_id)
-
 class BotReplyMessages:
     def __init__(self, chat_id, orig_msg_id, prefix):
         self.prefix = prefix
@@ -456,6 +486,9 @@ class BotReplyMessages:
         self.orig_msg_id = orig_msg_id
         self.replied_msgs = []
         self.text = ''
+        self.pending_text = None
+        self.timer_task = None
+        self.update_task = None
 
     async def __aenter__(self):
         return self
@@ -465,7 +498,7 @@ class BotReplyMessages:
         for msg_id, _ in self.replied_msgs:
             pending_reply_manager.remove((self.chat_id, msg_id))
 
-    async def _force_update(self, text):
+    async def _update(self, session, text):
         slices = []
         while len(text) > self.msg_len:
             slices.append(text[:self.msg_len])
@@ -478,7 +511,7 @@ class BotReplyMessages:
         for i in range(min(len(slices), len(self.replied_msgs))):
             msg_id, msg_text = self.replied_msgs[i]
             if slices[i] != msg_text:
-                await edit_message(self.chat_id, self.prefix + slices[i], msg_id)
+                await session.edit_message(self.prefix + slices[i], msg_id)
                 self.replied_msgs[i] = (msg_id, slices[i])
         if len(slices) > len(self.replied_msgs):
             for i in range(len(self.replied_msgs), len(slices)):
@@ -486,23 +519,50 @@ class BotReplyMessages:
                     reply_to = self.orig_msg_id
                 else:
                     reply_to, _ = self.replied_msgs[i - 1]
-                msg_id = await send_message(self.chat_id, self.prefix + slices[i], reply_to)
+                msg_id = await session.send_message(self.prefix + slices[i], reply_to)
                 self.replied_msgs.append((msg_id, slices[i]))
                 pending_reply_manager.add((self.chat_id, msg_id))
         if len(self.replied_msgs) > len(slices):
             for i in range(len(slices), len(self.replied_msgs)):
                 msg_id, _ = self.replied_msgs[i]
-                await delete_message(self.chat_id, msg_id)
+                await session.delete_message(msg_id)
                 pending_reply_manager.remove((self.chat_id, msg_id))
             self.replied_msgs = self.replied_msgs[:len(slices)]
 
-    async def update(self, text):
+    async def _process_updates(self):
+        try:
+            while self.pending_text is not None:
+                async with rate_limit_manager.session(self.chat_id) as s:
+                    pending_text = self.pending_text
+                    self.pending_text = None
+                    await self._update(s, pending_text)
+        finally:
+            self.update_task = None
+
+    async def _timer(self):
+        await asyncio.sleep(SEND_BATCH_DELAY)
+        self.pending_text = self.text
+        if self.update_task is None:
+            self.update_task = asyncio.create_task(self._process_updates())
+        self.timer_task = None
+
+    def update(self, text):
         self.text = text
-        if not within_interval(self.chat_id):
-            await self._force_update(self.text)
+        if self.timer_task is None:
+            self.timer_task = asyncio.create_task(self._timer())
 
     async def finalize(self):
-        await self._force_update(self.text)
+        if self.timer_task is not None:
+            self.timer_task.cancel()
+            self.timer_task = None
+        self.pending_text = self.text
+        if self.update_task is None:
+            self.update_task = asyncio.create_task(self._process_updates())
+        while self.timer_task is not None or self.update_task is not None:
+            if self.timer_task is not None:
+                await self.timer_task
+            if self.update_task is not None:
+                await self.update_task
 
 @only_whitelist
 async def reply_handler(message):
@@ -656,8 +716,8 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
         reasoning = ''
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
+                replymsgs.update(render_reply(reply, info, error, reasoning, True))
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
-                first_update_timestamp = None
                 async for delta in stream:
                     if delta['type'] == 'text':
                         reply += delta['text']
@@ -667,11 +727,8 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                         info = delta['text']
                     elif delta['type'] == 'reasoning':
                         reasoning += delta['text']
-                    if first_update_timestamp is None:
-                        first_update_timestamp = time.time()
-                    if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
-                        await replymsgs.update(render_reply(reply, info, error, reasoning, True))
-                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
+                        replymsgs.update(render_reply(reply, info, error, reasoning, True))
+                replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
                     db[repr((chat_id, message_id))] = (True, [{'type': 'text', 'text': reply}], msg_id, model)
@@ -683,7 +740,7 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                 error += f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}\n'
                 if will_retry:
                     error += f'Retrying ({error_cnt}/{OPENAI_MAX_RETRY})...\n'
-                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
+                replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 if will_retry:
                     await asyncio.sleep(OPENAI_RETRY_INTERVAL)
                 if not will_retry:
@@ -693,7 +750,7 @@ async def ping(message):
     await send_message(message.chat_id, f'chat_id={message.chat_id} user_id={message.sender_id} is_whitelisted={is_whitelist(message.chat_id)}', message.id)
 
 async def main():
-    global bot_id, pending_reply_manager, db, bot
+    global bot_id, pending_reply_manager, rate_limit_manager, db, bot
 
     logFormatter = logging.Formatter("%(asctime)s %(process)d %(levelname)s %(message)s")
 
@@ -716,6 +773,7 @@ async def main():
             db['whitelist'] = {ADMIN_ID}
         bot_id = int(TELEGRAM_BOT_TOKEN.split(':')[0])
         pending_reply_manager = PendingReplyManager()
+        rate_limit_manager = RateLimitManager()
         async with await TelegramClient('bot', TELEGRAM_API_ID, TELEGRAM_API_HASH).start(bot_token=TELEGRAM_BOT_TOKEN) as bot:
             bot.parse_mode = None
             me = await bot.get_me()
