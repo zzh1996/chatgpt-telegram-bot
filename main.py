@@ -10,8 +10,9 @@ import base64
 import copy
 from collections import defaultdict
 from richtext import RichText
-import google.generativeai as genai
-from google.api_core import exceptions
+from google import genai
+from google.genai import types as gtypes
+from google.genai import errors as gerrors
 from telethon import TelegramClient, events, errors, functions, types
 import signal
 
@@ -24,8 +25,9 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 'g$', 'model': 'gemini-2.5-pro-preview-03-25'},
+    {'prefix': 'gf$', 'model': 'gemini-2.5-flash-preview-04-17'},
     {'prefix': 'g2$', 'model': 'gemini-2.0-pro-exp-02-05'},
-    {'prefix': 'gf$', 'model': 'gemini-2.0-flash'},
+    {'prefix': 'g2f$', 'model': 'gemini-2.0-flash'},
     {'prefix': 'gfl$', 'model': 'gemini-2.0-flash-lite-preview-02-05'},
     {'prefix': 'g15$', 'model': 'gemini-1.5-pro-latest'},
     {'prefix': 'g1$', 'model': 'gemini-1.0-pro-latest', 'vision_model': 'gemini-pro-vision'},
@@ -33,6 +35,7 @@ MODELS = [
     {'prefix': 'ge$', 'model': 'gemma-3-27b-it'},
 
     {'prefix': 'gemini-2.5-pro-preview-03-25$', 'model': 'gemini-2.5-pro-preview-03-25'},
+    {'prefix': 'gemini-2.5-flash-preview-04-17$', 'model': 'gemini-2.5-flash-preview-04-17'},
 
     {'prefix': 'gemini-2.0-flash$', 'model': 'gemini-2.0-flash'},
     {'prefix': 'gemini-2.0-flash-lite-preview-02-05$', 'model': 'gemini-2.0-flash-lite-preview-02-05'},
@@ -68,7 +71,7 @@ MODELS = [
 ]
 DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
 
-genai.configure(api_key=os.getenv('GEMINI_API_KEY'), transport='grpc_asyncio')
+client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
@@ -219,27 +222,89 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['data'] = '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
-    safety_settings = [{"category": category, "threshold": "BLOCK_NONE"} for category in [
-        "HARM_CATEGORY_SEXUAL",
-        "HARM_CATEGORY_DANGEROUS",
-        "HARM_CATEGORY_HARASSMENT",
-        "HARM_CATEGORY_HATE_SPEECH",
-        "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-        "HARM_CATEGORY_DANGEROUS_CONTENT",
-    ]]
-    generation_config = {
-        "response_mime_type": "text/plain",
-    }
-    stream = await genai.GenerativeModel(model, generation_config=generation_config).generate_content_async(
-        messages,
-        stream=True,
-        safety_settings=safety_settings,
-        request_options={"timeout": 600},
+
+    contents = []
+    for message in messages:
+        parts = []
+        for part in message['parts']:
+            if isinstance(part, str):
+                parts.append(gtypes.Part.from_text(text=part))
+            elif part['mime_type'] == 'image/jpeg':
+                parts.append(gtypes.Part.from_bytes(data=part['data'], mime_type='image/jpeg'))
+            else:
+                raise ValueError('Unknown part type')
+        contents.append(gtypes.Content(
+            role=message['role'],
+            parts=parts,
+        ))
+
+    is_reasoning_model = model in [
+        'gemini-2.0-flash-thinking-exp-01-21',
+        'gemini-2.0-pro-exp-02-05',
+        'gemini-2.5-flash-preview-04-17',
+        'gemini-2.5-pro-preview-03-25',
+    ]
+
+    config=gtypes.GenerateContentConfig(
+        safety_settings=[
+            gtypes.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='OFF'),
+            gtypes.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='OFF'),
+            gtypes.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='OFF'),
+            gtypes.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='OFF'),
+            gtypes.SafetySetting(category='HARM_CATEGORY_CIVIC_INTEGRITY', threshold='OFF'),
+        ],
+        # media_resolution='MEDIA_RESOLUTION_HIGH', # Media resolution is not enabled for api version v1beta
+        http_options=gtypes.HttpOptions(timeout=600000),
+    )
+    if is_reasoning_model:
+        config.thinking_config = gtypes.ThinkingConfig(include_thoughts=True, thinking_budget=24576)
+
+    stream = await client.aio.models.generate_content_stream(
+        model=model,
+        contents=contents,
+        config=config,
     )
     async for response in stream:
-        response_text = response.text
-        logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %r', chat_id, msg_id, task_id, response_text)
-        yield response_text
+        logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %r', chat_id, msg_id, task_id, response)
+        response: gtypes.GenerateContentResponse
+        assert len(response.candidates) == 1
+        obj = response.candidates[0]
+        if obj.content.role is not None:
+            assert obj.content.role == 'model'
+        if obj.content.parts is not None:
+            assert len(obj.content.parts) == 1
+            if obj.content.parts[0].text is not None:
+                yield {'type': 'text', 'text': obj.content.parts[0].text}
+            assert obj.content.parts[0].video_metadata is None
+            assert obj.content.parts[0].thought is None
+            assert obj.content.parts[0].code_execution_result is None
+            assert obj.content.parts[0].executable_code is None
+            assert obj.content.parts[0].file_data is None
+            assert obj.content.parts[0].function_call is None
+            assert obj.content.parts[0].function_response is None
+            assert obj.content.parts[0].inline_data is None
+        assert obj.citation_metadata is None
+        assert obj.grounding_metadata is None
+        assert obj.finish_message is None
+        if obj.finish_reason is not None:
+            if obj.finish_reason == 'STOP':
+                pass
+            else:
+                yield {'type': 'error', 'text': f'[!] Error: finish_reason="{obj.finish_reason}"\n'}
+        if response.usage_metadata is not None:
+            usage = response.usage_metadata
+            usage_text = ''
+            if usage.prompt_token_count is not None:
+                usage_text += f'Prompt tokens: {usage.prompt_token_count}\n'
+            if usage.tool_use_prompt_token_count is not None:
+                usage_text += f'Tool use prompt tokens: {usage.tool_use_prompt_token_count}\n'
+            if usage.cached_content_token_count is not None:
+                usage_text += f'Cached tokens: {usage.cached_content_token_count}\n'
+            if usage.thoughts_token_count is not None:
+                usage_text += f'Thought tokens: {usage.thoughts_token_count}\n'
+            if usage.candidates_token_count is not None:
+                usage_text += f'Output tokens: {usage.total_token_count}\n'
+            yield {'type': 'info', 'text': usage_text}
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
@@ -516,21 +581,43 @@ async def reply_handler(message):
         for task_id, m in enumerate(models):
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
+def render_reply(reply, info, error, reasoning, is_generating):
+    result = RichText.from_markdown(reply)
+    if reasoning:
+        result = RichText.Quote(reasoning, not is_generating) + '\n' + result
+    if info:
+        result += '\n' + RichText.Quote(info)
+    if error:
+        result += '\n' + RichText.Quote(RichText.Bold(error))
+    if is_generating:
+        result += '\n' + RichText.Italic('[!Generating...]')
+    return result
+
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
     error_cnt = 0
     while True:
         reply = ''
+        info = ''
+        error = ''
+        reasoning = ''
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
                 first_update_timestamp = None
                 async for delta in stream:
-                    reply += delta
+                    if delta['type'] == 'text':
+                        reply += delta['text']
+                    elif delta['type'] == 'error':
+                        error += delta['text']
+                    elif delta['type'] == 'info':
+                        info = delta['text']
+                    elif delta['type'] == 'reasoning':
+                        reasoning += delta['text']
                     if first_update_timestamp is None:
                         first_update_timestamp = time.time()
                     if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
-                        await replymsgs.update(RichText.from_markdown(reply) + ' [!Generating...]')
-                await replymsgs.update(RichText.from_markdown(reply))
+                        await replymsgs.update(render_reply(reply, info, error, reasoning, True))
+                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
                     db[repr((chat_id, message_id))] = (True, [{'type': 'text', 'text': reply}], msg_id, model)
@@ -538,13 +625,11 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
             except Exception as e:
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, model=%r, task_id=%r, cnt=%r): %s', chat_id, msg_id, model, task_id, error_cnt, e)
-                will_retry = not isinstance (e, exceptions.InvalidArgument) and error_cnt <= OPENAI_MAX_RETRY
-                error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
+                will_retry = not isinstance (e, gerrors.ClientError) and error_cnt <= OPENAI_MAX_RETRY
+                error += f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}\n'
                 if will_retry:
-                    error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
-                if reply:
-                    error_msg = reply + '\n\n' + error_msg
-                await replymsgs.update(error_msg)
+                    error += f'Retrying ({error_cnt}/{OPENAI_MAX_RETRY})...\n'
+                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 if will_retry:
                     await asyncio.sleep(OPENAI_RETRY_INTERVAL)
                 if not will_retry:
