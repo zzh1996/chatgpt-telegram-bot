@@ -727,7 +727,7 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                         info = delta['text']
                     elif delta['type'] == 'reasoning':
                         reasoning += delta['text']
-                        replymsgs.update(render_reply(reply, info, error, reasoning, True))
+                    replymsgs.update(render_reply(reply, info, error, reasoning, True))
                 replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
