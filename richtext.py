@@ -1,5 +1,68 @@
 from telethon import types
 
+class RichTextParts:
+    def __init__(self, s=''):
+        if isinstance(s, str):
+            self.parts = [{'type': 'richtext', 'content': RichText(s)}]
+        elif isinstance(s, RichText):
+            self.parts = [{'type': 'richtext', 'content': s}]
+        elif isinstance(s, RichTextParts):
+            self.parts = s.parts
+        elif isinstance(s, list) and s and all(isinstance(c, dict) for c in s) and all('type' in c and 'content' in c for c in s):
+            self.parts = s
+        else:
+            raise ValueError(f"Unsupported type: {type(s)}")
+
+    @classmethod
+    def Image(cls, photo_hash):
+        return RichTextParts([{'type': 'image', 'content': photo_hash}])
+
+    @classmethod
+    def RichText(cls, rich_text):
+        return RichTextParts([{'type': 'richtext', 'content': rich_text}])
+
+    def __len__(self):
+        return len(self.parts)
+
+    def __str__(self):
+        return f'RichTextParts({self.parts})'
+
+    def __repr__(self):
+        return f'RichTextParts({self.parts})'
+
+    def __add__(self, value):
+        if isinstance(value, RichTextParts):
+            if self.parts and value.parts:
+                if self.parts[-1]['type'] == 'richtext' and value.parts[0]['type'] == 'richtext':
+                    middle = {'type': 'richtext', 'content': self.parts[-1]['content'] + value.parts[0]['content']}
+                    return RichTextParts(self.parts[:-1] + [middle] + value.parts[1:])
+                elif len(self.parts) == 1 and self.parts[0]['type'] == 'richtext' and self.parts[0]['content'] == '':
+                    return value
+                elif len(value.parts) == 1 and value.parts[0]['type'] == 'richtext' and value.parts[0]['content'] == '':
+                    return self
+            return RichTextParts(self.parts + value.parts)
+        else:
+            return self + RichTextParts(value)
+
+    def __radd__(self, value):
+        return RichTextParts(value) + self
+
+    def __eq__(self, value):
+        if not isinstance(value, RichTextParts):
+            if isinstance(value, str) or isinstance(value, RichText):
+                return self == RichTextParts(value)
+            return False
+        return self.parts == value.parts
+
+    def to_slices(self, slice_size):
+        slices = []
+        for part in self.parts:
+            if part['type'] == 'richtext':
+                slices.extend(part['content'].to_slices(slice_size))
+            elif part['type'] == 'image':
+                slices.append(RichTextParts([part]))
+        return slices
+
 class RichText:
     def __init__(self, s=''):
         if isinstance(s, str):
@@ -9,7 +72,7 @@ class RichText:
         elif isinstance(s, list) and s and all(isinstance(c, dict) for c in s) and all('type' in c and 'content' in c for c in s):
             self.children = s
         else:
-            raise ValueError()
+            raise ValueError(f"Unsupported type: {type(s)}")
 
     @classmethod
     def Raw(cls, s):
@@ -207,6 +270,16 @@ class RichText:
                     entities.append(types.MessageEntityTextUrl(offset + start, length, c['url']))
                 offset += utf16len(t)
         return text, entities
+
+    def to_slices(self, slice_size):
+        text = self
+        slices = []
+        while len(text) > slice_size:
+            slices.append(text[:slice_size])
+            text = text[slice_size:]
+        if text:
+            slices.append(text)
+        return slices
 
 def process_line(line):
     is_title = False

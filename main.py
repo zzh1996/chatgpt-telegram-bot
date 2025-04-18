@@ -9,7 +9,7 @@ import hashlib
 import base64
 import copy
 from collections import defaultdict
-from richtext import RichText
+from richtext import RichText, RichTextParts
 from google import genai
 from google.genai import types as gtypes
 from google.genai import errors as gerrors
@@ -17,6 +17,7 @@ from telethon import TelegramClient, events, errors, functions, types
 import signal
 import re
 from contextlib import asynccontextmanager
+import shutil
 
 def debug_signal_handler(signal, frame):
     breakpoint()
@@ -35,6 +36,7 @@ MODELS = [
     {'prefix': 'g1$', 'model': 'gemini-1.0-pro-latest', 'vision_model': 'gemini-pro-vision'},
     {'prefix': 'gt$', 'model': 'gemini-2.0-flash-thinking-exp-01-21'},
     {'prefix': 'ge$', 'model': 'gemma-3-27b-it'},
+    {'prefix': 'gi$', 'model': 'gemini-2.0-flash-exp-image-generation'},
 
     {'prefix': 'gemini-2.5-pro-preview-03-25$', 'model': 'gemini-2.5-pro-preview-03-25'},
     {'prefix': 'gemini-2.5-flash-preview-04-17$', 'model': 'gemini-2.5-flash-preview-04-17'},
@@ -186,16 +188,24 @@ class _RateLimitSessionHandle:
     @check_alive
     @retry()
     @ensure_interval
-    async def send_message(self, text, reply_to_message_id):
-        logging.info('Sending message: chat_id=%r, reply_to_message_id=%r, text=%r', self.chat_id, reply_to_message_id, text)
-        text = RichText(text)
-        text, entities = text.to_telegram()
+    async def send_message(self, message, reply_to_message_id):
+        logging.info('Sending message: chat_id=%r, reply_to_message_id=%r, text=%r', self.chat_id, reply_to_message_id, message)
+        message = RichTextParts(message)
+        if len(message.parts) == 1 and message.parts[0]['type'] == 'richtext':
+            text, entities = message.parts[0]['content'].to_telegram()
+            file = None
+        elif len(message.parts) == 2 and message.parts[0]['type'] == 'richtext' and message.parts[1]['type'] == 'image':
+            text, entities = message.parts[0]['content'].to_telegram()
+            file = load_photo_filename(message.parts[1]['content'])
+        else:
+            raise ValueError('Invalid format')
         msg = await bot.send_message(
             self.chat_id,
             text,
             reply_to=reply_to_message_id,
             link_preview=False,
             formatting_entities=entities,
+            file=file,
         )
         logging.info('Message sent: chat_id=%r, reply_to_message_id=%r, message_id=%r', self.chat_id, reply_to_message_id, msg.id)
         return msg.id
@@ -203,10 +213,18 @@ class _RateLimitSessionHandle:
     @check_alive
     @retry()
     @ensure_interval
-    async def edit_message(self, text, message_id):
-        logging.info('Editing message: chat_id=%r, message_id=%r, text=%r', self.chat_id, message_id, text)
-        text = RichText(text)
-        text, entities = text.to_telegram()
+    async def edit_message(self, message, message_id):
+        logging.info('Editing message: chat_id=%r, message_id=%r, text=%r', self.chat_id, message_id, message)
+        message = RichTextParts(message)
+        if len(message.parts) == 1 and message.parts[0]['type'] == 'richtext':
+            text, entities = message.parts[0]['content'].to_telegram()
+            file = None
+        elif len(message.parts) == 2 and message.parts[0]['type'] == 'richtext' and message.parts[1]['type'] == 'image':
+            text, entities = message.parts[0]['content'].to_telegram()
+            file = load_photo_filename(message.parts[1]['content'])
+        else:
+            raise ValueError('Invalid format')
+        # Cannot remove an image using edit_message
         try:
             await bot.edit_message(
                 self.chat_id,
@@ -214,6 +232,7 @@ class _RateLimitSessionHandle:
                 text,
                 link_preview=False,
                 formatting_entities=entities,
+                file=file,
             )
         except errors.MessageNotModifiedError as e:
             logging.info('Message not modified: chat_id=%r, message_id=%r', self.chat_id, message_id)
@@ -288,6 +307,14 @@ def save_photo(photo_blob): # TODO: change to async
             f.write(photo_blob)
     return h
 
+def load_photo_filename(h):
+    dir = f'photos/{h[:2]}/{h[2:4]}'
+    path = f'{dir}/{h}'
+    new_path = path + '.png'
+    if not os.path.exists(new_path):
+        shutil.copy(path, new_path)
+    return new_path
+
 def load_photo(h):
     dir = f'photos/{h[:2]}/{h[2:4]}'
     path = f'{dir}/{h}'
@@ -359,6 +386,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         'gemini-2.5-flash-preview-04-17',
         'gemini-2.5-pro-preview-03-25',
     ]
+    is_image_generation_model = model == 'gemini-2.0-flash-exp-image-generation'
 
     config=gtypes.GenerateContentConfig(
         safety_settings=[
@@ -375,6 +403,9 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     if is_reasoning_model:
         config.thinking_config = gtypes.ThinkingConfig(include_thoughts=True, thinking_budget=24576)
 
+    if is_image_generation_model:
+        config.response_modalities = ["image", "text"]
+
     config_tools = []
     for tool in tools:
         if tool == 'c':
@@ -383,13 +414,23 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             config_tools.append(gtypes.Tool(google_search=gtypes.GoogleSearch))
     config.tools = config_tools
 
+    def remove_response_blobs(response):
+        if response.candidates is not None and len(response.candidates) == 1:
+            obj = response.candidates[0]
+            if obj.content.parts is not None and len(obj.content.parts) == 1:
+                if obj.content.parts[0].inline_data is not None:
+                    response_new = response.model_copy(deep=True)
+                    response_new.candidates[0].content.parts[0].inline_data = b'...'
+                    return response_new
+        return response
+
     stream = await client.aio.models.generate_content_stream(
         model=model,
         contents=contents,
         config=config,
     )
     async for response in stream:
-        logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %r', chat_id, msg_id, task_id, response)
+        logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %r', chat_id, msg_id, task_id, remove_response_blobs(response))
         response: gtypes.GenerateContentResponse
         if response.candidates is not None:
             assert len(response.candidates) == 1
@@ -413,7 +454,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 assert obj.content.parts[0].function_call is None
                 assert obj.content.parts[0].function_response is None
                 if obj.content.parts[0].inline_data is not None:
-                    yield {'type': 'text', 'text': '\n[Image]\n'}
+                    yield {'type': 'image', 'data': obj.content.parts[0].inline_data.data}
             # assert obj.citation_metadata is None # TODO: show citations when uploading file
             # assert obj.grounding_metadata is None # TODO: show grounding when using google search
             assert obj.finish_message is None
@@ -547,12 +588,7 @@ class BotReplyMessages:
             pending_reply_manager.remove((self.chat_id, msg_id))
 
     async def _update(self, session, text):
-        slices = []
-        while len(text) > self.msg_len:
-            slices.append(text[:self.msg_len])
-            text = text[self.msg_len:]
-        if text:
-            slices.append(text)
+        slices = RichTextParts(text).to_slices(self.msg_len)
         if not slices:
             slices = [''] # deal with empty message
 
@@ -751,7 +787,14 @@ async def reply_handler(message):
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
 def render_reply(reply, info, error, reasoning, is_generating):
-    result = RichText.from_markdown(reply)
+    result = RichTextParts()
+    for part in reply:
+        if part['type'] == 'text':
+            result += RichText.from_markdown(part['text'])
+        elif part['type'] == 'image':
+            result += RichTextParts.Image(part['hash'])
+        else:
+            raise ValueError(f"Unknown type: {part['type']}")
     if reasoning:
         result = RichText.Quote(reasoning, not is_generating) + '\n' + result
     if info:
@@ -765,7 +808,7 @@ def render_reply(reply, info, error, reasoning, is_generating):
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
     error_cnt = 0
     while True:
-        reply = ''
+        reply = []
         info = ''
         error = ''
         reasoning = ''
@@ -775,7 +818,15 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
                 async for delta in stream:
                     if delta['type'] == 'text':
-                        reply += delta['text']
+                        if delta['text'] == '':
+                            continue
+                        if reply and reply[-1]['type'] == 'text':
+                            reply[-1]['text'] += delta['text']
+                        else:
+                            reply.append({'type': 'text', 'text': delta['text']})
+                    elif delta['type'] == 'image':
+                        photo_hash = save_photo(delta['data'])
+                        reply.append({'type': 'image', 'hash': photo_hash})
                     elif delta['type'] == 'error':
                         error += delta['text']
                     elif delta['type'] == 'info':
@@ -786,7 +837,7 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                 replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
-                    db[repr((chat_id, message_id))] = (True, [{'type': 'text', 'text': reply}], msg_id, model)
+                    db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
                 return
             except Exception as e:
                 error_cnt += 1
