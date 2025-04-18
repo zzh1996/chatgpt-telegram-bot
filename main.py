@@ -15,6 +15,7 @@ from google.genai import types as gtypes
 from google.genai import errors as gerrors
 from telethon import TelegramClient, events, errors, functions, types
 import signal
+import re
 
 def debug_signal_handler(signal, frame):
     breakpoint()
@@ -245,6 +246,12 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         parts = []
         for part in message['parts']:
             if isinstance(part, str):
+                if message['role'] == 'user':
+                    youtube_re = r'@https://(?:(?:(?:www\.|m\.)?youtube\.com)|youtu\.be)/[a-zA-Z0-9./?=&%_~#:-]+'
+                    youtube_urls = re.findall(youtube_re, part)
+                    for url in youtube_urls:
+                        url = url[1:]
+                        parts.append(gtypes.Part(file_data=gtypes.FileData(file_uri=url)))
                 parts.append(gtypes.Part.from_text(text=part))
             else:
                 parts.append(gtypes.Part.from_bytes(data=part['data'], mime_type=part['mime_type']))
@@ -318,7 +325,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             if usage.thoughts_token_count is not None:
                 usage_text += f'Thought tokens: {usage.thoughts_token_count}\n'
             if usage.candidates_token_count is not None:
-                usage_text += f'Output tokens: {usage.total_token_count}\n'
+                usage_text += f'Output tokens: {usage.candidates_token_count}\n'
             yield {'type': 'info', 'text': usage_text}
 
 def construct_chat_history(chat_id, msg_id):
