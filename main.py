@@ -73,16 +73,16 @@ MODELS = [
 ]
 DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
 
-def PRICING(model, input_tokens, output_tokens):
+def PRICING(model, input_tokens, output_tokens, audio_tokens):
     if model == 'gemini-2.5-pro-preview-03-25':
         if input_tokens <= 200_000: # exact conditions is not sure
             return 1.25e-6 * input_tokens + 10e-6 * output_tokens
         else:
             return 2.5e-6 * input_tokens + 15e-6 * output_tokens
     elif model == 'gemini-2.5-flash-preview-04-17':
-        return 0.15e-6 * input_tokens + 3.5e-6 * output_tokens
+        return 0.15e-6 * (input_tokens - audio_tokens) + 3.5e-6 * output_tokens + 1e-6 * audio_tokens
     elif model == 'gemini-2.0-flash':
-        return 0.1e-6 * input_tokens + 0.4e-6 * output_tokens
+        return 0.1e-6 * (input_tokens - audio_tokens) + 0.4e-6 * output_tokens + 0.7e-6 * audio_tokens
     elif model == 'gemini-2.0-flash-lite':
         return 0.075e-6 * input_tokens + 0.3e-6 * output_tokens
 
@@ -391,36 +391,37 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %r', chat_id, msg_id, task_id, response)
         response: gtypes.GenerateContentResponse
-        assert len(response.candidates) == 1
-        obj = response.candidates[0]
-        if obj.content.role is not None:
-            assert obj.content.role == 'model'
-        if obj.content.parts is not None:
-            assert len(obj.content.parts) == 1
-            if obj.content.parts[0].text is not None:
-                yield {'type': 'text', 'text': obj.content.parts[0].text}
-            assert obj.content.parts[0].video_metadata is None
-            assert obj.content.parts[0].thought is None
-            if obj.content.parts[0].code_execution_result is not None:
-                markdown = f'\n```\n{obj.content.parts[0].code_execution_result.output}\n```\n'
-                yield {'type': 'text', 'text': markdown}
-            if obj.content.parts[0].executable_code is not None:
-                code = obj.content.parts[0].executable_code
-                markdown = f'\n```{code.language.lower()}\n{code.code}\n```\n'
-                yield {'type': 'text', 'text': markdown}
-            assert obj.content.parts[0].file_data is None
-            assert obj.content.parts[0].function_call is None
-            assert obj.content.parts[0].function_response is None
-            if obj.content.parts[0].inline_data is not None:
-                yield {'type': 'text', 'text': '\n[Image]\n'}
-        # assert obj.citation_metadata is None # TODO: show citations when uploading file
-        # assert obj.grounding_metadata is None # TODO: show grounding when using google search
-        assert obj.finish_message is None
-        if obj.finish_reason is not None:
-            if obj.finish_reason == 'STOP':
-                pass
-            else:
-                yield {'type': 'error', 'text': f'[!] Error: finish_reason="{obj.finish_reason}"\n'}
+        if response.candidates is not None:
+            assert len(response.candidates) == 1
+            obj = response.candidates[0]
+            if obj.content.role is not None:
+                assert obj.content.role == 'model'
+            if obj.content.parts is not None:
+                assert len(obj.content.parts) == 1
+                if obj.content.parts[0].text is not None:
+                    yield {'type': 'text', 'text': obj.content.parts[0].text}
+                assert obj.content.parts[0].video_metadata is None
+                assert obj.content.parts[0].thought is None
+                if obj.content.parts[0].code_execution_result is not None:
+                    markdown = f'\n```\n{obj.content.parts[0].code_execution_result.output}\n```\n'
+                    yield {'type': 'text', 'text': markdown}
+                if obj.content.parts[0].executable_code is not None:
+                    code = obj.content.parts[0].executable_code
+                    markdown = f'\n```{code.language.lower()}\n{code.code}\n```\n'
+                    yield {'type': 'text', 'text': markdown}
+                assert obj.content.parts[0].file_data is None
+                assert obj.content.parts[0].function_call is None
+                assert obj.content.parts[0].function_response is None
+                if obj.content.parts[0].inline_data is not None:
+                    yield {'type': 'text', 'text': '\n[Image]\n'}
+            # assert obj.citation_metadata is None # TODO: show citations when uploading file
+            # assert obj.grounding_metadata is None # TODO: show grounding when using google search
+            assert obj.finish_message is None
+            if obj.finish_reason is not None:
+                if obj.finish_reason == 'STOP':
+                    pass
+                else:
+                    yield {'type': 'error', 'text': f'[!] Error: finish_reason="{obj.finish_reason}"\n'}
         if response.usage_metadata is not None:
             usage = response.usage_metadata
             usage_text = ''
@@ -439,7 +440,13 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             if usage.candidates_token_count is not None:
                 usage_text += f'Output tokens: {usage.candidates_token_count}\n'
                 output_tokens += usage.candidates_token_count
-            cost = PRICING(model, input_tokens, output_tokens)
+            audio_tokens = 0
+            for mod in usage.prompt_tokens_details:
+                if mod.modality == 'AUDIO':
+                    audio_tokens += mod.token_count
+            if audio_tokens > 0:
+                usage_text += f'Audio tokens: {audio_tokens}\n'
+            cost = PRICING(model, input_tokens, output_tokens, audio_tokens)
             if cost:
                 usage_text += f'Cost (Estimated): ${cost:.2f}\n'
             yield {'type': 'info', 'text': usage_text}
