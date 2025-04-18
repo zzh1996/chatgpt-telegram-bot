@@ -30,7 +30,7 @@ MODELS = [
     {'prefix': 'gf$', 'model': 'gemini-2.5-flash-preview-04-17'},
     {'prefix': 'g2$', 'model': 'gemini-2.0-pro-exp-02-05'},
     {'prefix': 'g2f$', 'model': 'gemini-2.0-flash'},
-    {'prefix': 'gfl$', 'model': 'gemini-2.0-flash-lite-preview-02-05'},
+    {'prefix': 'gfl$', 'model': 'gemini-2.0-flash-lite'},
     {'prefix': 'g15$', 'model': 'gemini-1.5-pro-latest'},
     {'prefix': 'g1$', 'model': 'gemini-1.0-pro-latest', 'vision_model': 'gemini-pro-vision'},
     {'prefix': 'gt$', 'model': 'gemini-2.0-flash-thinking-exp-01-21'},
@@ -40,7 +40,7 @@ MODELS = [
     {'prefix': 'gemini-2.5-flash-preview-04-17$', 'model': 'gemini-2.5-flash-preview-04-17'},
 
     {'prefix': 'gemini-2.0-flash$', 'model': 'gemini-2.0-flash'},
-    {'prefix': 'gemini-2.0-flash-lite-preview-02-05$', 'model': 'gemini-2.0-flash-lite-preview-02-05'},
+    {'prefix': 'gemini-2.0-flash-lite$', 'model': 'gemini-2.0-flash-lite'},
     {'prefix': 'gemini-2.0-pro-exp-02-05$', 'model': 'gemini-2.0-pro-exp-02-05'},
 
     {'prefix': 'gemini-exp-1114$', 'model': 'gemini-exp-1114'},
@@ -72,6 +72,19 @@ MODELS = [
     {'prefix': 'gemini-1.0-pro-001$', 'model': 'gemini-1.0-pro-001'},
 ]
 DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
+
+def PRICING(model, input_tokens, output_tokens):
+    if model == 'gemini-2.5-pro-preview-03-25':
+        if input_tokens <= 200_000: # exact conditions is not sure
+            return 1.25e-6 * input_tokens + 10e-6 * output_tokens
+        else:
+            return 2.5e-6 * input_tokens + 15e-6 * output_tokens
+    elif model == 'gemini-2.5-flash-preview-04-17':
+        return 0.15e-6 * input_tokens + 3.5e-6 * output_tokens
+    elif model == 'gemini-2.0-flash':
+        return 0.1e-6 * input_tokens + 0.4e-6 * output_tokens
+    elif model == 'gemini-2.0-flash-lite':
+        return 0.075e-6 * input_tokens + 0.3e-6 * output_tokens
 
 client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -411,16 +424,24 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         if response.usage_metadata is not None:
             usage = response.usage_metadata
             usage_text = ''
+            input_tokens = 0
+            output_tokens = 0
             if usage.prompt_token_count is not None:
                 usage_text += f'Prompt tokens: {usage.prompt_token_count}\n'
+                input_tokens += usage.prompt_token_count
             if usage.tool_use_prompt_token_count is not None:
                 usage_text += f'Tool use prompt tokens: {usage.tool_use_prompt_token_count}\n'
+                output_tokens += usage.tool_use_prompt_token_count
             if usage.cached_content_token_count is not None:
                 usage_text += f'Cached tokens: {usage.cached_content_token_count}\n'
             if usage.thoughts_token_count is not None:
                 usage_text += f'Thought tokens: {usage.thoughts_token_count}\n'
             if usage.candidates_token_count is not None:
                 usage_text += f'Output tokens: {usage.candidates_token_count}\n'
+                output_tokens += usage.candidates_token_count
+            cost = PRICING(model, input_tokens, output_tokens)
+            if cost:
+                usage_text += f'Cost (Estimated): ${cost:.2f}\n'
             yield {'type': 'info', 'text': usage_text}
 
 def construct_chat_history(chat_id, msg_id):
