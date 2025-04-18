@@ -82,7 +82,7 @@ OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 30
 FIRST_BATCH_DELAY = 1
 TEXT_FILE_SIZE_LIMIT = 10_000_000
-PDF_FILE_SIZE_LIMIT = 32_000_000
+FILE_SIZE_LIMIT = 32_000_000
 TRIGGERS_LIMIT = 20
 
 telegram_last_timestamp = defaultdict(lambda: None)
@@ -349,7 +349,7 @@ def construct_chat_history(chat_id, msg_id):
                 has_image = True
             elif obj['type'] == 'file':
                 blob = load_file(obj['file']['hash'])
-                new_message.append({'mime_type': 'application/pdf', 'data': blob})
+                new_message.append({'mime_type': obj['file']['mime_type'], 'data': blob})
             else:
                 raise ValueError('Unknown message type in chat history')
         message = new_message
@@ -562,17 +562,29 @@ async def reply_handler(message):
     document_text = None
     file_hash = None
     file_name = None
+    file_mime_type = None
     if document_message is not None:
         if document_message.grouped_id is not None:
             await send_message(chat_id, '[!] Error: Grouped files are not yet supported, but will be supported soon', msg_id)
             return
-        if document_message.document.mime_type == 'application/pdf':
-            if document_message.document.size > PDF_FILE_SIZE_LIMIT:
-                await send_message(chat_id, '[!] Error: PDF file too large', msg_id)
+        if document_message.document.mime_type in [
+            'application/pdf',
+            'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
+            'video/mp4', 'video/mov', 'video/avi', 'video/x-flv', 'video/mpg', 'video/webm', 'video/wmv', 'video/3gpp',
+            'audio/mpeg', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac',
+        ]:
+            if document_message.document.size > FILE_SIZE_LIMIT:
+                await send_message(chat_id, '[!] Error: File too large', msg_id)
                 return
             document_blob = await document_message.download_media(bytes)
             file_hash = save_file(document_blob)
-            file_name = document_message.document.attributes[0].file_name
+            for attr in document_message.document.attributes:
+                if isinstance(attr, types.DocumentAttributeFilename):
+                    file_name = attr.file_name
+                    break
+            file_mime_type = document_message.document.mime_type
+            if file_mime_type == 'audio/mpeg':
+                file_mime_type = 'audio/mp3' # fix Gemini mp3 mime type
         elif document_message.document.mime_type.startswith('text/'):
             if document_message.document.size > TEXT_FILE_SIZE_LIMIT:
                 await send_message(chat_id, '[!] Error: Text file too large', msg_id)
@@ -598,7 +610,7 @@ async def reply_handler(message):
         else:
             new_message = [{'type': 'text', 'text': document_text}]
     elif file_hash:
-        new_message = [{'type': 'file', 'file': {'filename': file_name, 'hash': file_hash}}]
+        new_message = [{'type': 'file', 'file': {'filename': file_name, 'hash': file_hash, 'mime_type': file_mime_type}}]
         if text:
             new_message.append({'type': 'text', 'text': text})
     else:
