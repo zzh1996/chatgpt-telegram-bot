@@ -298,6 +298,11 @@ def load_file(h):
         return f.read()
 
 async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_history = [user, ai, user, ai, ..., user]
+    tools = ''
+    if '+' in model:
+        model, tools = model.split('+', 1)
+    tools = set(tools)
+
     assert len(chat_history) % 2 == 1
     messages=[]
     roles = ["user", "model"]
@@ -353,8 +358,17 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         # media_resolution='MEDIA_RESOLUTION_HIGH', # Media resolution is not enabled for api version v1beta
         http_options=gtypes.HttpOptions(timeout=600000),
     )
+
     if is_reasoning_model:
         config.thinking_config = gtypes.ThinkingConfig(include_thoughts=True, thinking_budget=24576)
+
+    config_tools = []
+    for tool in tools:
+        if tool == 'c':
+            config_tools.append(gtypes.Tool(code_execution=gtypes.ToolCodeExecution))
+        elif tool == 's':
+            config_tools.append(gtypes.Tool(google_search=gtypes.GoogleSearch))
+    config.tools = config_tools
 
     stream = await client.aio.models.generate_content_stream(
         model=model,
@@ -374,14 +388,20 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 yield {'type': 'text', 'text': obj.content.parts[0].text}
             assert obj.content.parts[0].video_metadata is None
             assert obj.content.parts[0].thought is None
-            assert obj.content.parts[0].code_execution_result is None
-            assert obj.content.parts[0].executable_code is None
+            if obj.content.parts[0].code_execution_result is not None:
+                markdown = f'\n```\n{obj.content.parts[0].code_execution_result.output}\n```\n'
+                yield {'type': 'text', 'text': markdown}
+            if obj.content.parts[0].executable_code is not None:
+                code = obj.content.parts[0].executable_code
+                markdown = f'\n```{code.language.lower()}\n{code.code}\n```\n'
+                yield {'type': 'text', 'text': markdown}
             assert obj.content.parts[0].file_data is None
             assert obj.content.parts[0].function_call is None
             assert obj.content.parts[0].function_response is None
-            assert obj.content.parts[0].inline_data is None
-        # assert obj.citation_metadata is None # TODO: show citations
-        assert obj.grounding_metadata is None
+            if obj.content.parts[0].inline_data is not None:
+                yield {'type': 'text', 'text': '\n[Image]\n'}
+        # assert obj.citation_metadata is None # TODO: show citations when uploading file
+        # assert obj.grounding_metadata is None # TODO: show grounding when using google search
         assert obj.finish_message is None
         if obj.finish_reason is not None:
             if obj.finish_reason == 'STOP':
@@ -606,6 +626,13 @@ async def reply_handler(message):
             for m in MODELS:
                 if m['prefix'] == t.strip() + '$':
                     models.append(m['model'])
+                    break
+                elif m['prefix'] == t.strip().split('+', 1)[0] + '$':
+                    tools = t.strip().split('+', 1)[1]
+                    if not set(tools) <= set('sc') or not tools:
+                        await send_message(chat_id, '[!] Error: Unknown tools in prefix', msg_id)
+                        return
+                    models.append(m['model'] + '+' + tools)
                     break
         if models and len(triggers) > TRIGGERS_LIMIT:
             await send_message(chat_id, f'[!] Error: Too many triggers (limit: {TRIGGERS_LIMIT})', msg_id)
