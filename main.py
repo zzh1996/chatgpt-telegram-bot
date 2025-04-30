@@ -22,7 +22,17 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'q$', 'model': 'qwen-max-latest', 'prompt_template': ''},
+    {'prefix': 'q$', 'model': 'qwen3-235b-a22b', 'prompt_template': ''},
+
+    {'prefix': 'qwen3-235b-a22b$', 'model': 'qwen3-235b-a22b', 'prompt_template': ''},
+    {'prefix': 'qwen3-32b$', 'model': 'qwen3-32b', 'prompt_template': ''},
+    {'prefix': 'qwen3-30b-a3b$', 'model': 'qwen3-30b-a3b', 'prompt_template': ''},
+    {'prefix': 'qwen3-14b$', 'model': 'qwen3-14b', 'prompt_template': ''},
+    {'prefix': 'qwen3-8b$', 'model': 'qwen3-8b', 'prompt_template': ''},
+    {'prefix': 'qwen3-4b$', 'model': 'qwen3-4b', 'prompt_template': ''},
+    {'prefix': 'qwen3-1.7b$', 'model': 'qwen3-1.7b', 'prompt_template': ''},
+    {'prefix': 'qwen3-0.6b$', 'model': 'qwen3-0.6b', 'prompt_template': ''},
+
     {'prefix': 'qwen-max$', 'model': 'qwen-max', 'prompt_template': ''},
     {'prefix': 'qwen-max-latest$', 'model': 'qwen-max-latest', 'prompt_template': ''},
     {'prefix': 'qwen-max-2024-09-19$', 'model': 'qwen-max-2024-09-19', 'prompt_template': ''},
