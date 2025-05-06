@@ -27,7 +27,7 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'g$', 'model': 'gemini-2.5-pro-preview-03-25'},
+    {'prefix': 'g$', 'model': 'gemini-2.5-pro-preview-05-06'},
     {'prefix': 'gf$', 'model': 'gemini-2.5-flash-preview-04-17'},
     {'prefix': 'g2$', 'model': 'gemini-2.0-pro-exp-02-05'},
     {'prefix': 'g2f$', 'model': 'gemini-2.0-flash'},
@@ -38,6 +38,7 @@ MODELS = [
     {'prefix': 'ge$', 'model': 'gemma-3-27b-it'},
     {'prefix': 'gi$', 'model': 'gemini-2.0-flash-exp-image-generation'},
 
+    {'prefix': 'gemini-2.5-pro-preview-05-06$', 'model': 'gemini-2.5-pro-preview-05-06'},
     {'prefix': 'gemini-2.5-pro-preview-03-25$', 'model': 'gemini-2.5-pro-preview-03-25'},
     {'prefix': 'gemini-2.5-flash-preview-04-17$', 'model': 'gemini-2.5-flash-preview-04-17'},
 
@@ -76,7 +77,7 @@ MODELS = [
 DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
 
 def PRICING(model, input_tokens, output_tokens, audio_tokens):
-    if model == 'gemini-2.5-pro-preview-03-25':
+    if model.startswith('gemini-2.5-pro-preview-'):
         if input_tokens <= 200_000: # exact conditions is not sure
             return 1.25e-6 * input_tokens + 10e-6 * output_tokens
         else:
@@ -385,6 +386,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         'gemini-2.0-pro-exp-02-05',
         'gemini-2.5-flash-preview-04-17',
         'gemini-2.5-pro-preview-03-25',
+        'gemini-2.5-pro-preview-05-06',
     ]
     is_image_generation_model = model == 'gemini-2.0-flash-exp-image-generation'
 
