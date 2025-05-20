@@ -28,7 +28,7 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 'g$', 'model': 'gemini-2.5-pro-preview-05-06'},
-    {'prefix': 'gf$', 'model': 'gemini-2.5-flash-preview-04-17'},
+    {'prefix': 'gf$', 'model': 'gemini-2.5-flash-preview-05-20'},
     {'prefix': 'g2$', 'model': 'gemini-2.0-pro-exp-02-05'},
     {'prefix': 'g2f$', 'model': 'gemini-2.0-flash'},
     {'prefix': 'gfl$', 'model': 'gemini-2.0-flash-lite'},
@@ -41,6 +41,7 @@ MODELS = [
     {'prefix': 'gemini-2.5-pro-preview-05-06$', 'model': 'gemini-2.5-pro-preview-05-06'},
     {'prefix': 'gemini-2.5-pro-preview-03-25$', 'model': 'gemini-2.5-pro-preview-03-25'},
     {'prefix': 'gemini-2.5-flash-preview-04-17$', 'model': 'gemini-2.5-flash-preview-04-17'},
+    {'prefix': 'gemini-2.5-flash-preview-05-20$', 'model': 'gemini-2.5-flash-preview-05-20'},
 
     {'prefix': 'gemini-2.0-flash$', 'model': 'gemini-2.0-flash'},
     {'prefix': 'gemini-2.0-flash-lite$', 'model': 'gemini-2.0-flash-lite'},
@@ -82,7 +83,7 @@ def PRICING(model, input_tokens, output_tokens, audio_tokens):
             return 1.25e-6 * input_tokens + 10e-6 * output_tokens
         else:
             return 2.5e-6 * input_tokens + 15e-6 * output_tokens
-    elif model == 'gemini-2.5-flash-preview-04-17':
+    elif model.startswith('gemini-2.5-flash-preview-'):
         return 0.15e-6 * (input_tokens - audio_tokens) + 3.5e-6 * output_tokens + 1e-6 * audio_tokens
     elif model == 'gemini-2.0-flash':
         return 0.1e-6 * (input_tokens - audio_tokens) + 0.4e-6 * output_tokens + 0.7e-6 * audio_tokens
@@ -385,6 +386,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         'gemini-2.0-flash-thinking-exp-01-21',
         'gemini-2.0-pro-exp-02-05',
         'gemini-2.5-flash-preview-04-17',
+        'gemini-2.5-flash-preview-05-20',
         'gemini-2.5-pro-preview-03-25',
         'gemini-2.5-pro-preview-05-06',
     ]
@@ -442,9 +444,11 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             if obj.content.parts is not None:
                 assert len(obj.content.parts) == 1
                 if obj.content.parts[0].text is not None:
-                    yield {'type': 'text', 'text': obj.content.parts[0].text}
+                    if obj.content.parts[0].thought is not None and obj.content.parts[0].thought:
+                        yield {'type': 'reasoning', 'text': obj.content.parts[0].text}
+                    else:
+                        yield {'type': 'text', 'text': obj.content.parts[0].text}
                 assert obj.content.parts[0].video_metadata is None
-                assert obj.content.parts[0].thought is None
                 if obj.content.parts[0].code_execution_result is not None:
                     markdown = f'\n```\n{obj.content.parts[0].code_execution_result.output}\n```\n'
                     yield {'type': 'text', 'text': markdown}
@@ -470,6 +474,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             usage_text = ''
             input_tokens = 0
             output_tokens = 0
+            thinking_tokens = 0
             if usage.prompt_token_count is not None:
                 usage_text += f'Prompt tokens: {usage.prompt_token_count}\n'
                 input_tokens += usage.prompt_token_count
@@ -480,6 +485,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 usage_text += f'Cached tokens: {usage.cached_content_token_count}\n'
             if usage.thoughts_token_count is not None:
                 usage_text += f'Thought tokens: {usage.thoughts_token_count}\n'
+                thinking_tokens += usage.thoughts_token_count
             if usage.candidates_token_count is not None:
                 usage_text += f'Output tokens: {usage.candidates_token_count}\n'
                 output_tokens += usage.candidates_token_count
@@ -489,7 +495,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                     audio_tokens += mod.token_count
             if audio_tokens > 0:
                 usage_text += f'Audio tokens: {audio_tokens}\n'
-            cost = PRICING(model, input_tokens, output_tokens, audio_tokens)
+            cost = PRICING(model, input_tokens, output_tokens + thinking_tokens, audio_tokens)
             if cost:
                 usage_text += f'Cost (Estimated): ${cost:.2f}\n'
             yield {'type': 'info', 'text': usage_text}
@@ -798,7 +804,7 @@ def render_reply(reply, info, error, reasoning, is_generating):
         else:
             raise ValueError(f"Unknown type: {part['type']}")
     if reasoning:
-        result = RichText.Quote(reasoning, not is_generating) + '\n' + result
+        result = RichText.Quote(reasoning.strip(), not is_generating) + '\n' + result
     if info:
         result += '\n' + RichText.Quote(info)
     if error:

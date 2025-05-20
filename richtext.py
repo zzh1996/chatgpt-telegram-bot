@@ -41,8 +41,12 @@ class RichTextParts:
                 elif len(value.parts) == 1 and value.parts[0]['type'] == 'richtext' and value.parts[0]['content'] == '':
                     return self
             return RichTextParts(self.parts + value.parts)
-        else:
+        elif isinstance(value, str):
             return self + RichTextParts(value)
+        elif isinstance(value, RichText):
+            return self + RichTextParts(value)
+        else:
+            return NotImplemented
 
     def __radd__(self, value):
         return RichTextParts(value) + self
@@ -127,8 +131,10 @@ class RichText:
                 self_last['content'] = self_last_content + value_first_content
                 return RichText(self.children[:-1] + [self_last] + value.children[1:])
             return RichText(self.children + value.children)
-        else:
+        elif isinstance(value, str):
             return self + RichText(value)
+        else:
+            return NotImplemented
 
     def __radd__(self, value):
         return RichText(value) + self
