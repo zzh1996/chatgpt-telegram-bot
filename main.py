@@ -37,7 +37,21 @@ MODELS = [
 DEFAULT_MODEL = 'claude-3-opus-20240229' # For compatibility with the old database format
 
 PRICING = {
+    'claude-4-opus-20250514': (15e-6, 75e-6, 18.75e-6, 1.5e-6),
+    'claude-4-sonnet-20250514': (3e-6, 15e-6, 3.75e-6, 0.3e-6),
     'claude-3-7-sonnet-20250219': (3e-6, 15e-6, 3.75e-6, 0.3e-6),
+}
+
+MODEL_MAX_TOKENS = {
+    'claude-4-opus-20250514': 32000,
+    'claude-4-sonnet-20250514': 64000,
+    'claude-3-7-sonnet-20250219': 64000,
+    'claude-3-5-sonnet-20241022': 8192,
+    'claude-3-5-sonnet-20240620': 8192,
+    'claude-3-5-haiku-20241022': 8192,
+    'claude-3-opus-20240229': 4096,
+    'claude-3-sonnet-20240229': 4096,
+    'claude-3-haiku-20240307': 4096,
 }
 
 def get_prompt(model):
@@ -258,7 +272,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             model=model,
             messages=messages,
             stream=True,
-            max_tokens=8192 if model.startswith('claude-3-5-') or model.startswith('claude-3-7') else 4096,
+            max_tokens=MODEL_MAX_TOKENS.get(model, 4096),
         )
     output_tokens = 0
     cache_creation_input_tokens = 0
