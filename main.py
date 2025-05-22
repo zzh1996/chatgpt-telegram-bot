@@ -23,7 +23,9 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'c$', 'model': 'claude-3-7-sonnet-20250219', 'prompt_template': ''},
+    {'prefix': 'c$', 'model': 'claude-4-opus-20250514', 'prompt_template': ''},
+    {'prefix': 'cs$', 'model': 'claude-4-sonnet-20250514', 'prompt_template': ''},
+    {'prefix': 'c37s$', 'model': 'claude-3-7-sonnet-20250219', 'prompt_template': ''},
     {'prefix': 'ct$', 'model': 'claude-3-7-sonnet-20250219 thinking', 'prompt_template': ''},
     {'prefix': 'c35s$', 'model': 'claude-3-5-sonnet-20241022', 'prompt_template': ''},
     {'prefix': 'claude-3-5-sonnet-20240620$', 'model': 'claude-3-5-sonnet-20240620', 'prompt_template': ''},
