@@ -25,8 +25,10 @@ ADMIN_ID = 71863318
 MODELS = [
     {'prefix': 'c$', 'model': 'claude-4-opus-20250514', 'prompt_template': ''},
     {'prefix': 'cs$', 'model': 'claude-4-sonnet-20250514', 'prompt_template': ''},
+    {'prefix': 'ct$', 'model': 'claude-4-opus-20250514 thinking', 'prompt_template': ''},
+    {'prefix': 'cst$', 'model': 'claude-4-sonnet-20250514 thinking', 'prompt_template': ''},
     {'prefix': 'c37s$', 'model': 'claude-3-7-sonnet-20250219', 'prompt_template': ''},
-    {'prefix': 'ct$', 'model': 'claude-3-7-sonnet-20250219 thinking', 'prompt_template': ''},
+    {'prefix': 'c37t$', 'model': 'claude-3-7-sonnet-20250219 thinking', 'prompt_template': ''},
     {'prefix': 'c35s$', 'model': 'claude-3-5-sonnet-20241022', 'prompt_template': ''},
     {'prefix': 'claude-3-5-sonnet-20240620$', 'model': 'claude-3-5-sonnet-20240620', 'prompt_template': ''},
     {'prefix': 'claude-3-5-haiku-20241022$', 'model': 'claude-3-5-haiku-20241022', 'prompt_template': ''},
@@ -52,6 +54,12 @@ MODEL_MAX_TOKENS = {
     'claude-3-opus-20240229': 4096,
     'claude-3-sonnet-20240229': 4096,
     'claude-3-haiku-20240307': 4096,
+}
+
+MODEL_THINKING_MAX_TOKENS = {
+    'claude-4-opus-20250514': 32000,
+    'claude-4-sonnet-20250514': 64000,
+    'claude-3-7-sonnet-20250219': 128000,
 }
 
 def get_prompt(model):
@@ -256,14 +264,15 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_blobs(messages))
     if model.endswith(' thinking'):
+        model=model.split()[0]
         stream = await aclient.beta.messages.create(
-            model=model.split()[0],
+            model=model,
             messages=messages,
             stream=True,
-            max_tokens=128000,
+            max_tokens=MODEL_THINKING_MAX_TOKENS[model],
             thinking={
                 "type": "enabled",
-                "budget_tokens": 127999,
+                "budget_tokens": MODEL_THINKING_MAX_TOKENS[model] - 1,
             },
             betas=["output-128k-2025-02-19"],
         )
@@ -317,15 +326,15 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                     usage_text += f"Input tokens: {input_tokens}\n"
                 if output_tokens:
                     usage_text += f"Output tokens: {output_tokens}\n"
-                if model.split()[0] in PRICING:
-                    input_price, output_price, caching_write_price, caching_read_price = PRICING[model.split()[0]]
+                if model in PRICING:
+                    input_price, output_price, caching_write_price, caching_read_price = PRICING[model]
                     cost = 0
                     cost += input_price * input_tokens
                     cost += output_price * output_tokens
                     cost += caching_write_price * cache_creation_input_tokens
                     cost += caching_read_price * cache_read_input_tokens
                     usage_text += f"Cost: ${cost:.2f}\n"
-                if usage_text and model.endswith(' thinking'):
+                if usage_text:
                     yield {'type': 'info', 'text': usage_text}
             stop_reason = event.delta.stop_reason
             if stop_reason is not None:
