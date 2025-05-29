@@ -421,7 +421,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     def remove_response_blobs(response):
         if response.candidates is not None and len(response.candidates) == 1:
             obj = response.candidates[0]
-            if obj.content.parts is not None and len(obj.content.parts) == 1:
+            if obj.content is not None and obj.content.parts is not None and len(obj.content.parts) == 1:
                 if obj.content.parts[0].inline_data is not None:
                     response_new = response.model_copy(deep=True)
                     response_new.candidates[0].content.parts[0].inline_data = b'...'
