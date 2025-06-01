@@ -439,28 +439,29 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         if response.candidates is not None:
             assert len(response.candidates) == 1
             obj = response.candidates[0]
-            if obj.content.role is not None:
-                assert obj.content.role == 'model'
-            if obj.content.parts is not None:
-                assert len(obj.content.parts) == 1
-                if obj.content.parts[0].text is not None:
-                    if obj.content.parts[0].thought is not None and obj.content.parts[0].thought:
-                        yield {'type': 'reasoning', 'text': obj.content.parts[0].text}
-                    else:
-                        yield {'type': 'text', 'text': obj.content.parts[0].text}
-                assert obj.content.parts[0].video_metadata is None
-                if obj.content.parts[0].code_execution_result is not None:
-                    markdown = f'\n```\n{obj.content.parts[0].code_execution_result.output}\n```\n'
-                    yield {'type': 'text', 'text': markdown}
-                if obj.content.parts[0].executable_code is not None:
-                    code = obj.content.parts[0].executable_code
-                    markdown = f'\n```{code.language.lower()}\n{code.code}\n```\n'
-                    yield {'type': 'text', 'text': markdown}
-                assert obj.content.parts[0].file_data is None
-                assert obj.content.parts[0].function_call is None
-                assert obj.content.parts[0].function_response is None
-                if obj.content.parts[0].inline_data is not None:
-                    yield {'type': 'image', 'data': obj.content.parts[0].inline_data.data}
+            if obj.content is not None:
+                if obj.content.role is not None:
+                    assert obj.content.role == 'model'
+                if obj.content.parts is not None:
+                    assert len(obj.content.parts) == 1
+                    if obj.content.parts[0].text is not None:
+                        if obj.content.parts[0].thought is not None and obj.content.parts[0].thought:
+                            yield {'type': 'reasoning', 'text': obj.content.parts[0].text}
+                        else:
+                            yield {'type': 'text', 'text': obj.content.parts[0].text}
+                    assert obj.content.parts[0].video_metadata is None
+                    if obj.content.parts[0].code_execution_result is not None:
+                        markdown = f'\n```\n{obj.content.parts[0].code_execution_result.output}\n```\n'
+                        yield {'type': 'text', 'text': markdown}
+                    if obj.content.parts[0].executable_code is not None:
+                        code = obj.content.parts[0].executable_code
+                        markdown = f'\n```{code.language.lower()}\n{code.code}\n```\n'
+                        yield {'type': 'text', 'text': markdown}
+                    assert obj.content.parts[0].file_data is None
+                    assert obj.content.parts[0].function_call is None
+                    assert obj.content.parts[0].function_response is None
+                    if obj.content.parts[0].inline_data is not None:
+                        yield {'type': 'image', 'data': obj.content.parts[0].inline_data.data}
             # assert obj.citation_metadata is None # TODO: show citations when uploading file
             # assert obj.grounding_metadata is None # TODO: show grounding when using google search
             assert obj.finish_message is None
