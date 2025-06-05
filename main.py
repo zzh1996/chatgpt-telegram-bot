@@ -407,7 +407,10 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     )
 
     if is_reasoning_model:
-        config.thinking_config = gtypes.ThinkingConfig(include_thoughts=True, thinking_budget=24576)
+        config.thinking_config = gtypes.ThinkingConfig(
+            include_thoughts=True,
+            thinking_budget=32768 if model == 'gemini-2.5-pro-preview-06-05' else 24576,
+        )
 
     if is_image_generation_model:
         config.response_modalities = ["image", "text"]
