@@ -32,6 +32,9 @@ GPT_4O_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, base
 MODELS = [
     {'prefix': '$', 'model': 'chatgpt-4o-latest', 'prompt_template': GPT_4O_PROMPT},
 
+    {'prefix': 'o3p$', 'model': 'o3-pro', 'prompt_template': ''},
+    {'prefix': 'o3-pro$', 'model': 'o3-pro', 'prompt_template': ''},
+    {'prefix': 'o3-pro-2025-06-10$', 'model': 'o3-pro-2025-06-10', 'prompt_template': ''},
     {'prefix': 'o3$', 'model': 'o3', 'prompt_template': ''},
     {'prefix': 'o3-2025-04-16$', 'model': 'o3-2025-04-16', 'prompt_template': ''},
     {'prefix': 'o4m$', 'model': 'o4-mini', 'prompt_template': ''},
@@ -112,10 +115,12 @@ PRICING = {
     'gpt-4.5-preview-2025-02-27': (75, 150, 37.5, True),
     'o1-pro': (150, 600, 150, True),
     'o1-pro-2025-03-19': (150, 600, 150, True),
-    'o3': (10, 40, 2.5, True),
-    'o3-2025-04-16': (10, 40, 2.5, True),
+    'o3': (2, 8, 0.5, True),
+    'o3-2025-04-16': (2, 8, 0.5, True),
     'o4-mini': (1.1, 4.4, 0.275, True),
     'o4-mini-2025-04-16': (1.1, 4.4, 0.275, True),
+    'o3-pro': (20, 80, 20, True),
+    'o3-pro-2025-06-10': (20, 80, 20, True),
 
     'chatgpt-4o-latest': (5, 15, 5, False),
     'gpt-3.5-turbo-0125': (0.5, 1.5, 0.5, False),
@@ -430,8 +435,8 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
 
     is_reasoning_model = model.startswith('o')
     support_stream = True # As of 2025-02-14, o1 supports streaming
-    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16']
-    support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16']
+    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10']
+    support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10']
     is_search_model = 'search' in model
     is_responses_api = model.startswith('o1-pro') or support_reasoning_summary
     if not is_responses_api:
