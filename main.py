@@ -757,7 +757,7 @@ async def reply_handler(message):
             'application/pdf',
             'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
             'video/mp4', 'video/mov', 'video/avi', 'video/x-flv', 'video/mpg', 'video/webm', 'video/wmv', 'video/3gpp',
-            'audio/mpeg', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac',
+            'audio/mpeg', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac', 'audio/mp4',
         ]:
             if document_message.document.size > FILE_SIZE_LIMIT:
                 await send_message(chat_id, '[!] Error: File too large', msg_id)
@@ -783,7 +783,7 @@ async def reply_handler(message):
                 await send_message(chat_id, '[!] Error: Text file is not valid UTF-8', msg_id)
                 return
         else:
-            await send_message(chat_id, '[!] Error: Unknown file type', msg_id)
+            await send_message(chat_id, f'[!] Error: Unknown file type: {document_message.document.mime_type}', msg_id)
             return
 
     if photo_hash:
