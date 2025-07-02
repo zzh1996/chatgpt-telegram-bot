@@ -59,6 +59,7 @@ MODELS = [
 
     {'prefix': 'qa$', 'model': 'openrouter/openrouter/quasar-alpha'},
     {'prefix': 'oa$', 'model': 'openrouter/openrouter/optimus-alpha'},
+    {'prefix': 'ca$', 'model': 'openrouter/cypher-alpha:free'},
 ]
 
 VISION_MODELS = {
