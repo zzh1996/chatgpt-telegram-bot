@@ -489,6 +489,9 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                     pass
                 else:
                     yield {'type': 'error', 'text': f'[!] Error: finish_reason="{obj.finish_reason}"\n'}
+        if response.prompt_feedback is not None:
+            if response.prompt_feedback.block_reason is not None:
+                yield {'type': 'error', 'text': f'[!] Error: block_reason="{response.prompt_feedback.block_reason}"\n'}
         if response.usage_metadata is not None:
             usage = response.usage_metadata
             usage_text = ''
