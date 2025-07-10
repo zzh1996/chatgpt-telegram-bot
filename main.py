@@ -34,7 +34,7 @@ MODELS = [
     {'prefix': 'grok-2-vision-1212$', 'model': 'grok-2-vision-1212', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'grok-2-1212' # For compatibility with the old database format
-VISION_MODEL = 'grok-2-vision-1212'
+VISION_MODEL = 'grok-4-0709'
 
 def get_prompt(model):
     for m in MODELS:
