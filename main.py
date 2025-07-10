@@ -22,8 +22,9 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'x$', 'model': 'grok-3-fast', 'prompt_template': ''},
+    {'prefix': 'x$', 'model': 'grok-4-0709', 'prompt_template': ''},
     {'prefix': 'xm$', 'model': 'grok-3-mini-fast', 'prompt_template': ''},
+    {'prefix': 'grok-4-0709$', 'model': 'grok-4-0709', 'prompt_template': ''},
     {'prefix': 'grok-3-fast$', 'model': 'grok-3-fast', 'prompt_template': ''},
     {'prefix': 'grok-3-mini-fast$', 'model': 'grok-3-mini-fast', 'prompt_template': ''},
     {'prefix': 'grok-3$', 'model': 'grok-3', 'prompt_template': ''},
