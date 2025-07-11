@@ -11,6 +11,7 @@ import copy
 from collections import defaultdict
 from richtext import RichText
 import openai
+import httpx
 from telethon import TelegramClient, events, errors, functions, types
 import signal
 
@@ -46,7 +47,7 @@ aclient = openai.AsyncOpenAI(
     api_key=os.getenv("XAI_API_KEY"),
     base_url="https://api.x.ai/v1",
     max_retries=0,
-    timeout=15,
+    timeout=httpx.Timeout(timeout=600, connect=15),
 )
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
