@@ -27,6 +27,7 @@ PROVIDERS = {
     'hyperbolic': {'base_url': 'https://api.hyperbolic.xyz/v1', 'api_key': os.getenv("HYPERBOLIC_API_KEY")},
     'fireworks': {'base_url': 'https://api.fireworks.ai/inference/v1', 'api_key': os.getenv("FIREWORKS_API_KEY")},
     'openrouter': {'base_url': 'https://openrouter.ai/api/v1', 'api_key': os.getenv("OPENROUTER_API_KEY")},
+    'groq': {'base_url': 'https://api.groq.com/openai/v1', 'api_key': os.getenv("GROQ_API_KEY")},
 }
 
 MODELS = [
@@ -60,6 +61,8 @@ MODELS = [
     {'prefix': 'qa$', 'model': 'openrouter/openrouter/quasar-alpha'},
     {'prefix': 'oa$', 'model': 'openrouter/openrouter/optimus-alpha'},
     {'prefix': 'ca$', 'model': 'openrouter/openrouter/cypher-alpha:free'},
+
+    {'prefix': 'gk2$', 'model': 'groq/moonshotai/kimi-k2-instruct'},
 ]
 
 VISION_MODELS = {
