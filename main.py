@@ -23,6 +23,7 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 'm$', 'model': 'moonshot-v1-8k', 'prompt_template': ''},
+    {'prefix': 'k2$', 'model': 'kimi-k2-0711-preview', 'prompt_template': ''},
     {'prefix': 'moonshot-v1-8k$', 'model': 'moonshot-v1-8k', 'prompt_template': ''},
     {'prefix': 'moonshot-v1-32k$', 'model': 'moonshot-v1-32k', 'prompt_template': ''},
     {'prefix': 'moonshot-v1-128k$', 'model': 'moonshot-v1-128k', 'prompt_template': ''},
