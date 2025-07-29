@@ -551,9 +551,6 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                 logging.exception('Error (chat_id=%r, msg_id=%r, model=%r, task_id=%r, cnt=%r): %s', chat_id, msg_id, model, task_id, error_cnt, e)
                 will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
                 error += f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}\n'
-                if len(error_msg) > 500:
-                    error_msg = error_msg[:500] + '...'
-                error_msg = f'[!] Error: {error_msg}'
                 if will_retry:
                     error += f'Retrying ({error_cnt}/{OPENAI_MAX_RETRY})...\n'
                 await replymsgs.update(render_reply(reply, info, error, reasoning, False))
