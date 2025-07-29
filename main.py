@@ -24,7 +24,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'z$', 'model': 'glm-4-plus', 'prompt_template': ''},
+    {'prefix': 'z$', 'model': 'glm-4.5', 'prompt_template': ''},
+    {'prefix': 'z4$', 'model': 'glm-4-plus', 'prompt_template': ''},
     {'prefix': 'z-$', 'model': 'glm-4-plus disable_search', 'prompt_template': ''},
     {'prefix': 'zz$', 'model': 'glm-zero-preview', 'prompt_template': ''},
     {'prefix': 'glm-4-0520$', 'model': 'glm-4-0520', 'prompt_template': ''},
@@ -39,7 +40,7 @@ MODELS = [
     {'prefix': 'glm-4-flash-$', 'model': 'glm-4-flash disable_search', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'glm-4' # For compatibility with the old database format
-VISION_MODEL = 'glm-4v-plus'
+VISION_MODEL = 'glm-4.1v-thinking-flashx'
 
 def get_prompt(model):
     if model == VISION_MODEL:
@@ -99,6 +100,10 @@ class ZhipuAI:
             'stream': True,
             'tools': [{'type': 'web_search', 'web_search': {'enable': not disable_search}}],
         }
+        if model == 'glm-4.5':
+            payload['thinking'] = {
+                "type": "enabled",
+            }
         if model != VISION_MODEL:
             payload['max_tokens'] = 8192
         async with aiohttp.ClientSession() as session:
@@ -274,16 +279,20 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             if obj['delta']['role'] != 'assistant':
                 raise ValueError("Role error")
         if 'content' in obj['delta']:
-            yield obj['delta']['content']
+            yield {'type': 'text', 'text': obj['delta']['content']}
+        if 'reasoning_content' in obj['delta']:
+            yield {'type': 'reasoning', 'text': obj['delta']['reasoning_content']}
         if 'finish_reason' in obj:
             finish_reason = obj['finish_reason']
             if finish_reason == 'length':
-                yield '\n\n[!] Error: Output truncated due to limit'
+                yield {'type': 'error', 'text': '[!] Error: Output truncated due to limit\n'}
             elif finish_reason == 'stop':
                 pass
             else:
-                yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
+                yield {'type': 'error', 'text': f'[!] Error: finish_reason="{finish_reason}"\n'}
             finished = True
+    if not finished:
+        raise ValueError("Incomplete response")
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
@@ -560,21 +569,43 @@ async def reply_handler(message):
                 m = VISION_MODEL
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
+def render_reply(reply, info, error, reasoning, is_generating):
+    result = RichText.from_markdown(reply)
+    if reasoning:
+        result = RichText.Quote(reasoning, not is_generating) + '\n' + result
+    if info:
+        result += '\n' + RichText.Quote(info)
+    if error:
+        result += '\n' + RichText.Quote(RichText.Bold(error))
+    if is_generating:
+        result += '\n' + RichText.Italic('[!Generating...]')
+    return result
+
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
     error_cnt = 0
     while True:
         reply = ''
+        info = ''
+        error = ''
+        reasoning = ''
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
                 first_update_timestamp = None
                 async for delta in stream:
-                    reply += delta
+                    if delta['type'] == 'text':
+                        reply += delta['text']
+                    elif delta['type'] == 'error':
+                        error += delta['text']
+                    elif delta['type'] == 'info':
+                        info += delta['text']
+                    elif delta['type'] == 'reasoning':
+                        reasoning += delta['text']
                     if first_update_timestamp is None:
                         first_update_timestamp = time.time()
                     if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
-                        await replymsgs.update(RichText.from_markdown(reply) + ' [!Generating...]')
-                await replymsgs.update(RichText.from_markdown(reply))
+                        await replymsgs.update(render_reply(reply, info, error, reasoning, True))
+                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
                     db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
@@ -583,12 +614,10 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, model=%r, task_id=%r, cnt=%r): %s', chat_id, msg_id, model, task_id, error_cnt, e)
                 will_retry = error_cnt <= OPENAI_MAX_RETRY
-                error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
+                error += f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}\n'
                 if will_retry:
-                    error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
-                if reply:
-                    error_msg = reply + '\n\n' + error_msg
-                await replymsgs.update(error_msg)
+                    error += f'Retrying ({error_cnt}/{OPENAI_MAX_RETRY})...\n'
+                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 if will_retry:
                     await asyncio.sleep(OPENAI_RETRY_INTERVAL)
                 if not will_retry:
