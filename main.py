@@ -151,9 +151,9 @@ PRICING = {
     'gpt-4o-search-preview-2025-03-11': (2.5, 10, 2.5, False),
 
     'gpt-5-chat-latest': (1.25, 10, 0.125, False),
-    'gpt-5-2025-08-07': (1.25, 10, 0.125, False),
-    'gpt-5-mini-2025-08-07': (0.25, 2, 0.025, False),
-    'gpt-5-nano-2025-08-07': (0.05, 0.4, 0.005, False),
+    'gpt-5-2025-08-07': (1.25, 10, 0.125, True),
+    'gpt-5-mini-2025-08-07': (0.25, 2, 0.025, True),
+    'gpt-5-nano-2025-08-07': (0.05, 0.4, 0.005, True),
 }
 
 def get_prompt(model):
