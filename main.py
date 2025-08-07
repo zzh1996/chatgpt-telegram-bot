@@ -30,7 +30,12 @@ GPT_4_TURBO_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI,
 GPT_4O_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2023-10\nCurrent date: {current_date}'
 
 MODELS = [
-    {'prefix': '$', 'model': 'chatgpt-4o-latest', 'prompt_template': GPT_4O_PROMPT},
+    {'prefix': '$', 'model': 'gpt-5-chat-latest', 'prompt_template': ''},
+
+    {'prefix': '5$', 'model': 'gpt-5-2025-08-07', 'prompt_template': ''},
+    {'prefix': '5m$', 'model': 'gpt-5-mini-2025-08-07', 'prompt_template': ''},
+    {'prefix': '5n$', 'model': 'gpt-5-nano-2025-08-07', 'prompt_template': ''},
+    {'prefix': '5c$', 'model': 'gpt-5-chat-latest', 'prompt_template': ''},
 
     {'prefix': 'o3p$', 'model': 'o3-pro', 'prompt_template': ''},
     {'prefix': 'o3-pro$', 'model': 'o3-pro', 'prompt_template': ''},
@@ -144,6 +149,11 @@ PRICING = {
     'gpt-4o-mini-search-preview-2025-03-11': (0.15, 0.6, 0.15, False),
     'gpt-4o-search-preview': (2.5, 10, 2.5, False),
     'gpt-4o-search-preview-2025-03-11': (2.5, 10, 2.5, False),
+
+    'gpt-5-chat-latest': (1.25, 10, 0.125, False),
+    'gpt-5-2025-08-07': (1.25, 10, 0.125, False),
+    'gpt-5-mini-2025-08-07': (0.25, 2, 0.025, False),
+    'gpt-5-nano-2025-08-07': (0.05, 0.4, 0.005, False),
 }
 
 def get_prompt(model):
@@ -433,12 +443,12 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 raise ValueError('Unknown role in chat history')
         return new_messages, system_prompt
 
-    is_reasoning_model = model.startswith('o')
+    is_reasoning_model = model.startswith('o') or model.startswith('gpt-5')
     support_stream = True # As of 2025-02-14, o1 supports streaming
-    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10']
-    support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10']
+    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07']
+    support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07']
     is_search_model = 'search' in model
-    is_responses_api = model.startswith('o1-pro') or support_reasoning_summary
+    is_responses_api = model.startswith('o1-pro') or support_reasoning_summary or model.startswith('gpt-5')
     if not is_responses_api:
         kwargs = {'model': model}
         if support_stream:
