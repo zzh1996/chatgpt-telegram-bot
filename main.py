@@ -180,6 +180,8 @@ TEXT_FILE_SIZE_LIMIT = 1_000_000
 PDF_FILE_SIZE_LIMIT = 32_000_000
 TRIGGERS_LIMIT = 20
 
+AVAILABLE_TOOLS = ['s', 'c', 'l']
+
 class PendingReplyManager:
     def __init__(self):
         self.messages = {}
@@ -391,6 +393,11 @@ def load_file(h):
         return f.read()
 
 async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_history = [user, ai, user, ai, ..., user]
+    tools = ''
+    if '+' in model:
+        model, tools = model.split('+', 1)
+    tools = set(tools)
+
     assert len(chat_history) % 2 == 1
     system_prompt = get_prompt(model)
     messages=[{"role": "system", "content": system_prompt}] if system_prompt else []
@@ -448,7 +455,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07']
     support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07']
     is_search_model = 'search' in model
-    is_responses_api = model.startswith('o1-pro') or support_reasoning_summary or model.startswith('gpt-5')
+    is_responses_api = model.startswith('o1-pro') or support_reasoning_summary or model.startswith('gpt-5') or tools
     if not is_responses_api:
         kwargs = {'model': model}
         if support_stream:
@@ -537,6 +544,19 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             if 'reasoning' not in kwargs:
                 kwargs['reasoning'] = {}
             kwargs['reasoning']['summary'] = 'detailed'
+        tools_param = []
+        for tool in tools:
+            if tool == 's':
+                tools_param.append({"type": "web_search_preview", "search_context_size": "high"})
+            elif tool == 'c':
+                tools_param.append({"type": "code_interpreter", "container": {"type": "auto"}})
+            elif tool == 'l':
+                if 'reasoning' not in kwargs:
+                    kwargs['reasoning'] = {}
+                kwargs['reasoning']['effort'] = 'low'
+        if tools_param:
+            kwargs['tools'] = tools_param
+
         logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r, args=%r): %s', chat_id, msg_id, task_id, model, kwargs, remove_blobs(messages))
         input_, instructions = convert_to_responses_api_input_format(messages)
         kwargs['input'] = input_
@@ -553,7 +573,9 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             elif response.type == 'response.output_item.added':
                 pass
             elif response.type == 'response.output_item.done':
-                pass
+                if response.item.type == 'web_search_call':
+                    yield {'type': 'reasoning', 'text': str(response.item.action)}
+                    yield {'type': 'reasoning_delimiter'}
             elif response.type == 'response.content_part.added':
                 assert response.part.type == 'output_text'
             elif response.type == 'response.content_part.done':
@@ -594,6 +616,24 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             elif response.type == 'response.reasoning_summary_text.done':
                 pass
             elif response.type == 'response.reasoning_summary_part.done':
+                yield {'type': 'reasoning_delimiter'}
+            elif response.type == 'response.web_search_call.in_progress':
+                pass
+            elif response.type == 'response.web_search_call.searching':
+                pass
+            elif response.type == 'response.web_search_call.completed':
+                pass
+            elif response.type == 'response.output_text.annotation.added':
+                pass
+            elif response.type == 'response.code_interpreter_call.in_progress':
+                pass
+            elif response.type == 'response.code_interpreter_call.interpreting':
+                pass
+            elif response.type == 'response.code_interpreter_call.completed':
+                pass
+            elif response.type == 'response.code_interpreter_call_code.delta':
+                yield {'type': 'reasoning', 'text': response.delta}
+            elif response.type == 'response.code_interpreter_call_code.done':
                 yield {'type': 'reasoning_delimiter'}
             else:
                 raise ValueError(f"Unknown response type: {response.type}")
@@ -801,6 +841,13 @@ async def reply_handler(message):
             for m in MODELS:
                 if m['prefix'] == t.strip() + '$':
                     models.append(m['model'])
+                    break
+                elif m['prefix'] == t.strip().split('+', 1)[0] + '$':
+                    tools = t.strip().split('+', 1)[1]
+                    if not set(tools) <= set(AVAILABLE_TOOLS) or not tools:
+                        await send_message(chat_id, '[!] Error: Unknown tools in prefix', msg_id)
+                        return
+                    models.append(m['model'] + '+' + tools)
                     break
         if models and len(triggers) > TRIGGERS_LIMIT:
             await send_message(chat_id, f'[!] Error: Too many triggers (limit: {TRIGGERS_LIMIT})', msg_id)
