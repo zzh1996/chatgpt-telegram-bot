@@ -435,6 +435,8 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             config_tools.append(gtypes.Tool(code_execution=gtypes.ToolCodeExecution))
         elif tool == 's':
             config_tools.append(gtypes.Tool(google_search=gtypes.GoogleSearch))
+        elif tool == 'u':
+            config_tools.append({"url_context": {}})
     config.tools = config_tools
 
     def remove_response_blobs(response):
@@ -724,7 +726,7 @@ async def reply_handler(message):
                     break
                 elif m['prefix'] == t.strip().split('+', 1)[0] + '$':
                     tools = t.strip().split('+', 1)[1]
-                    if not set(tools) <= set('sc') or not tools:
+                    if not set(tools) <= set('scu') or not tools:
                         await send_message(chat_id, '[!] Error: Unknown tools in prefix', msg_id)
                         return
                     models.append(m['model'] + '+' + tools)
