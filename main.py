@@ -759,13 +759,20 @@ async def reply_handler(message):
             return
 
     photo_message = message if message.photo is not None else extra_photo_message
-    photo_hash = None
+    photo_hashes = []
     if photo_message is not None:
         if photo_message.grouped_id is not None:
-            await send_message(chat_id, '[!] Error: Grouped photos are not yet supported, but will be supported soon', msg_id)
-            return
-        photo_blob = await photo_message.download_media(bytes)
-        photo_hash = save_photo(photo_blob)
+            grouped_id = photo_message.grouped_id
+            await asyncio.sleep(3)
+            if grouped_id not in albums:
+                await send_message(chat_id, f'[!] Error: Historical photo album cannot be accessed by bot. Please forward or resend.', msg_id)
+                return
+            for msg in sorted(albums[grouped_id], key=lambda m: m.id):
+                photo_blob = await msg.download_media(bytes)
+                photo_hashes.append(save_photo(photo_blob))
+        else:
+            photo_blob = await photo_message.download_media(bytes)
+            photo_hashes.append(save_photo(photo_blob))
 
     document_message = message if message.document is not None else extra_document_message
     document_text = None
@@ -809,8 +816,8 @@ async def reply_handler(message):
             await send_message(chat_id, f'[!] Error: Unknown file type: {document_message.document.mime_type}', msg_id)
             return
 
-    if photo_hash:
-        new_message = [{'type': 'image', 'hash': photo_hash}]
+    if photo_hashes:
+        new_message = [{'type': 'image', 'hash': photo_hash} for photo_hash in photo_hashes]
         if text:
             new_message.append({'type': 'text', 'text': text})
     elif document_text:
@@ -907,7 +914,7 @@ async def ping(message):
     await send_message(message.chat_id, f'chat_id={message.chat_id} user_id={message.sender_id} is_whitelisted={is_whitelist(message.chat_id)}', message.id)
 
 async def main():
-    global bot_id, pending_reply_manager, rate_limit_manager, db, bot
+    global bot_id, pending_reply_manager, rate_limit_manager, db, bot, albums
 
     logFormatter = logging.Formatter("%(asctime)s %(process)d %(levelname)s %(message)s")
 
@@ -929,6 +936,7 @@ async def main():
         if 'whitelist' not in db:
             db['whitelist'] = {ADMIN_ID}
         bot_id = int(TELEGRAM_BOT_TOKEN.split(':')[0])
+        albums = defaultdict(list)
         pending_reply_manager = PendingReplyManager()
         rate_limit_manager = RateLimitManager()
         async with await TelegramClient('bot', TELEGRAM_API_ID, TELEGRAM_API_HASH).start(bot_token=TELEGRAM_BOT_TOKEN) as bot:
@@ -942,6 +950,8 @@ async def main():
                     return
                 if event.message.message is None:
                     return
+                if event.message.grouped_id is not None:
+                    albums[event.message.grouped_id].append(event.message)
                 text = event.message.message
                 if text == '/ping' or text == f'/ping@{me.username}':
                     await ping(event.message)
