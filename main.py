@@ -36,7 +36,8 @@ MODELS = [
     {'prefix': 'g1$', 'model': 'gemini-1.0-pro-latest', 'vision_model': 'gemini-pro-vision'},
     {'prefix': 'gt$', 'model': 'gemini-2.0-flash-thinking-exp-01-21'},
     {'prefix': 'ge$', 'model': 'gemma-3-27b-it'},
-    {'prefix': 'gi$', 'model': 'gemini-2.0-flash-exp-image-generation'},
+    {'prefix': 'gi$', 'model': 'gemini-2.5-flash-image-preview'},
+    {'prefix': 'gi2$', 'model': 'gemini-2.0-flash-exp-image-generation'},
 
     {'prefix': 'gemini-2.5-pro$', 'model': 'gemini-2.5-pro'},
     {'prefix': 'gemini-2.5-flash$', 'model': 'gemini-2.5-flash'},
@@ -82,20 +83,22 @@ MODELS = [
 ]
 DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
 
-def PRICING(model, input_tokens, output_tokens, audio_tokens):
+def PRICING(model, input_tokens, output_tokens, input_audio_tokens, output_image_tokens):
     if model.startswith('gemini-2.5-pro'):
         if input_tokens <= 200_000: # exact conditions is not sure
             return 1.25e-6 * input_tokens + 10e-6 * output_tokens
         else:
             return 2.5e-6 * input_tokens + 15e-6 * output_tokens
     elif model == 'gemini-2.5-flash':
-        return 0.3e-6 * (input_tokens - audio_tokens) + 2.5e-6 * output_tokens + 1e-6 * audio_tokens
+        return 0.3e-6 * (input_tokens - input_audio_tokens) + 2.5e-6 * output_tokens + 1e-6 * input_audio_tokens
+    elif model == 'gemini-2.5-flash-image-preview':
+        return 0.3e-6 * (input_tokens - input_audio_tokens) + 2.5e-6 * (output_tokens - output_image_tokens) + 1e-6 * input_audio_tokens + 30e-6 * output_image_tokens
     elif model.startswith('gemini-2.5-flash-preview-'):
-        return 0.15e-6 * (input_tokens - audio_tokens) + 3.5e-6 * output_tokens + 1e-6 * audio_tokens
+        return 0.15e-6 * (input_tokens - input_audio_tokens) + 3.5e-6 * output_tokens + 1e-6 * input_audio_tokens
     elif model.startswith('gemini-2.5-flash-lite-preview-'):
-        return 0.1e-6 * (input_tokens - audio_tokens) + 0.4e-6 * output_tokens + 0.5e-6 * audio_tokens
+        return 0.1e-6 * (input_tokens - input_audio_tokens) + 0.4e-6 * output_tokens + 0.5e-6 * input_audio_tokens
     elif model == 'gemini-2.0-flash':
-        return 0.1e-6 * (input_tokens - audio_tokens) + 0.4e-6 * output_tokens + 0.7e-6 * audio_tokens
+        return 0.1e-6 * (input_tokens - input_audio_tokens) + 0.4e-6 * output_tokens + 0.7e-6 * input_audio_tokens
     elif model == 'gemini-2.0-flash-lite':
         return 0.075e-6 * input_tokens + 0.3e-6 * output_tokens
 
@@ -403,7 +406,10 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         'gemini-2.5-flash',
         'gemini-2.5-flash-lite-preview-06-17',
     ]
-    is_image_generation_model = model == 'gemini-2.0-flash-exp-image-generation'
+    is_image_generation_model = model in [
+        'gemini-2.0-flash-exp-image-generation',
+        'gemini-2.5-flash-image-preview'
+    ]
 
     config=gtypes.GenerateContentConfig(
         safety_settings=[
@@ -514,13 +520,25 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             if usage.candidates_token_count is not None:
                 usage_text += f'Output tokens: {usage.candidates_token_count}\n'
                 output_tokens += usage.candidates_token_count
-            audio_tokens = 0
+            input_audio_tokens = 0
+            input_image_tokens = 0
+            output_image_tokens = 0
             for mod in usage.prompt_tokens_details:
                 if mod.modality == 'AUDIO':
-                    audio_tokens += mod.token_count
-            if audio_tokens > 0:
-                usage_text += f'Audio tokens: {audio_tokens}\n'
-            cost = PRICING(model, input_tokens, output_tokens + thinking_tokens, audio_tokens)
+                    input_audio_tokens += mod.token_count
+                elif mod.modality == 'IMAGE':
+                    input_image_tokens += mod.token_count
+            if usage.candidates_tokens_details is not None:
+                for mod in usage.candidates_tokens_details:
+                    if mod.modality == 'IMAGE':
+                        output_image_tokens += mod.token_count
+            if input_audio_tokens > 0:
+                usage_text += f'Input Audio tokens: {input_audio_tokens}\n'
+            if input_image_tokens > 0:
+                usage_text += f'Input Image tokens: {input_image_tokens}\n'
+            if output_image_tokens > 0:
+                usage_text += f'Output Image tokens: {output_image_tokens}\n'
+            cost = PRICING(model, input_tokens, output_tokens + thinking_tokens, input_audio_tokens, output_image_tokens)
             if cost:
                 usage_text += f'Cost (Estimated): ${cost:.2f}\n'
             yield {'type': 'info', 'text': usage_text}
