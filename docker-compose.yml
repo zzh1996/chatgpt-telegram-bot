@@ -16,3 +16,4 @@ services:
           - TELEGRAM_BOT_TOKEN=
           - TELEGRAM_API_ID=
           - TELEGRAM_API_HASH=
+          - SAFETY_IDENTIFIER_SALT=

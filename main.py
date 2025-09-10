@@ -171,6 +171,9 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
 
+SAFETY_IDENTIFIER_SALT = os.getenv("SAFETY_IDENTIFIER_SALT")
+assert len(SAFETY_IDENTIFIER_SALT) >= 16
+
 TELEGRAM_LENGTH_LIMIT = 4096
 TELEGRAM_MIN_INTERVAL = 3
 OPENAI_MAX_RETRY = 3
@@ -392,7 +395,7 @@ def load_file(h):
     with open(path, 'rb') as f:
         return f.read()
 
-async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_history = [user, ai, user, ai, ..., user]
+async def completion(chat_history, model, chat_id, msg_id, task_id, safety_identifier): # chat_history = [user, ai, user, ai, ..., user]
     tools = ''
     if '+' in model:
         model, tools = model.split('+', 1)
@@ -467,6 +470,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             kwargs['reasoning_effort'] = 'high'
         if is_search_model:
             kwargs['web_search_options'] = {'search_context_size': 'high'}
+        kwargs['safety_identifier'] = safety_identifier
         logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r, args=%r): %s', chat_id, msg_id, task_id, model, kwargs, remove_blobs(messages))
         kwargs['messages'] = messages
         stream = await aclient.chat.completions.create(**kwargs)
@@ -556,6 +560,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 kwargs['reasoning']['effort'] = 'low'
         if tools_param:
             kwargs['tools'] = tools_param
+        kwargs['safety_identifier'] = safety_identifier
 
         logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r, args=%r): %s', chat_id, msg_id, task_id, model, kwargs, remove_blobs(messages))
         input_, instructions = convert_to_responses_api_input_format(messages)
@@ -610,7 +615,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             elif response.type == 'response.output_text.done':
                 pass
             elif response.type ==  'response.reasoning_summary_part.added':
-                assert response.part['type'] == 'summary_text'
+                assert response.part.type == 'summary_text'
             elif response.type == 'response.reasoning_summary_text.delta':
                 yield {'type': 'reasoning', 'text': response.delta}
             elif response.type == 'response.reasoning_summary_text.done':
@@ -921,9 +926,12 @@ async def reply_handler(message):
         return
 
     models = models if models is not None else [model]
+
+    safety_identifier = hashlib.sha256((SAFETY_IDENTIFIER_SALT + str(sender_id)).encode()).hexdigest()
+
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
-            tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
+            tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id, safety_identifier))
 
 def render_reply(reply, info, error, reasoning, is_generating):
     result = ''
@@ -939,7 +947,7 @@ def render_reply(reply, info, error, reasoning, is_generating):
         result += '\n' + RichText.Italic('[!Generating...]')
     return result
 
-async def process_request(chat_id, msg_id, chat_history, model, task_id):
+async def process_request(chat_id, msg_id, chat_history, model, task_id, safety_identifier):
     error_cnt = 0
     while True:
         reply = ''
@@ -949,7 +957,7 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
                 replymsgs.update(render_reply(reply, info, error, reasoning, True))
-                stream = completion(chat_history, model, chat_id, msg_id, task_id)
+                stream = completion(chat_history, model, chat_id, msg_id, task_id, safety_identifier)
                 async for delta in stream:
                     if delta['type'] == 'text':
                         reply += delta['text']
@@ -973,7 +981,7 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
             except Exception as e:
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, model=%r, task_id=%r, cnt=%r): %s', chat_id, msg_id, model, task_id, error_cnt, e)
-                will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
+                will_retry = not isinstance(e, (openai.BadRequestError, openai.APIError)) and error_cnt <= OPENAI_MAX_RETRY
                 error += f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}\n'
                 if will_retry:
                     error += f'Retrying ({error_cnt}/{OPENAI_MAX_RETRY})...\n'
