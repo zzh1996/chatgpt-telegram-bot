@@ -22,14 +22,16 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'db$', 'model': 'doubao-1.5-pro-32k-250115', 'prompt_template': ''},
-    {'prefix': 'dbt$', 'model': 'doubao-1.5-thinking-pro-250415', 'prompt_template': ''},
-    {'prefix': 'doubao-1.5-vision-pro-32k-250115$', 'model': 'doubao-1.5-vision-pro-32k-250115', 'prompt_template': ''},
-    {'prefix': 'doubao-1.5-thinking-vision-pro-250428$', 'model': 'doubao-1.5-thinking-vision-pro-250428', 'prompt_template': ''},
+    {'prefix': 'db$', 'model': 'doubao-seed-1-6-250615', 'prompt_template': ''},
+    {'prefix': 'dbt$', 'model': 'doubao-seed-1-6-thinking-250715', 'prompt_template': ''},
+    {'prefix': 'dbf$', 'model': 'doubao-seed-1-6-flash-250828', 'prompt_template': ''},
+    {'prefix': 'dbv$', 'model': 'doubao-seed-1-6-vision-250815', 'prompt_template': ''},
+    {'prefix': 'db15$', 'model': 'doubao-1.5-pro-32k-250115', 'prompt_template': ''},
+    {'prefix': 'db15t$', 'model': 'doubao-1.5-thinking-pro-250415', 'prompt_template': ''},
+    {'prefix': 'db15v$', 'model': 'doubao-1.5-vision-pro-32k-250115', 'prompt_template': ''},
+    {'prefix': 'db15tv$', 'model': 'doubao-1.5-thinking-vision-pro-250428', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'doubao-pro-32k-241215' # For compatibility with the old database format
-VISION_MODEL = 'doubao-1.5-vision-pro-32k-250115'
-VISION_REASONING_MODEL = 'doubao-1.5-thinking-vision-pro-250428'
 
 def get_prompt(model):
     for m in MODELS:
@@ -231,7 +233,6 @@ def construct_chat_history(chat_id, msg_id):
     messages = []
     should_be_bot = False
     model = DEFAULT_MODEL
-    has_image = False
     while True:
         key = repr((chat_id, msg_id))
         if key not in db:
@@ -254,7 +255,6 @@ def construct_chat_history(chat_id, msg_id):
                     blob_base64 = base64.b64encode(blob).decode()
                     image_url = 'data:image/jpeg;base64,' + blob_base64
                     new_message.append({'type': 'image_url', 'image_url': {'url': image_url, 'detail': 'high'}})
-                    has_image = True
                 else:
                     raise ValueError('Unknown message type in chat history')
             message = new_message
@@ -266,7 +266,7 @@ def construct_chat_history(chat_id, msg_id):
     if len(messages) % 2 != 1:
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
         return None, None
-    return messages[::-1], model, has_image
+    return messages[::-1], model
 
 @only_admin
 async def add_whitelist_handler(message):
@@ -490,7 +490,7 @@ async def reply_handler(message):
 
     db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, None)
 
-    chat_history, model, has_image = construct_chat_history(chat_id, msg_id)
+    chat_history, model = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
         await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id)
         return
@@ -498,11 +498,6 @@ async def reply_handler(message):
     models = models if models is not None else [model]
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
-            if has_image:
-                if 'thinking' in m:
-                    m = VISION_REASONING_MODEL
-                else:
-                    m = VISION_MODEL
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
 def render_reply(reply, info, error, reasoning, is_generating):
