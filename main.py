@@ -23,8 +23,13 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'x$', 'model': 'grok-4-0709', 'prompt_template': ''},
-    {'prefix': 'xm$', 'model': 'grok-3-mini-fast', 'prompt_template': ''},
+    {'prefix': 'x$', 'model': 'grok-4-fast-reasoning', 'prompt_template': ''},
+    {'prefix': 'x4$', 'model': 'grok-4-0709', 'prompt_template': ''},
+    {'prefix': 'x3$', 'model': 'grok-3-fast', 'prompt_template': ''},
+    {'prefix': 'x3m$', 'model': 'grok-3-mini-fast', 'prompt_template': ''},
+    {'prefix': 'grok-code-fast-1$', 'model': 'grok-code-fast-1', 'prompt_template': ''},
+    {'prefix': 'grok-4-fast-non-reasoning$', 'model': 'grok-4-fast-non-reasoning', 'prompt_template': ''},
+    {'prefix': 'grok-4-fast-reasoning$', 'model': 'grok-4-fast-reasoning', 'prompt_template': ''},
     {'prefix': 'grok-4-0709$', 'model': 'grok-4-0709', 'prompt_template': ''},
     {'prefix': 'grok-3-fast$', 'model': 'grok-3-fast', 'prompt_template': ''},
     {'prefix': 'grok-3-mini-fast$', 'model': 'grok-3-mini-fast', 'prompt_template': ''},
@@ -35,7 +40,6 @@ MODELS = [
     {'prefix': 'grok-2-vision-1212$', 'model': 'grok-2-vision-1212', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'grok-2-1212' # For compatibility with the old database format
-VISION_MODEL = 'grok-4-0709'
 
 def get_prompt(model):
     for m in MODELS:
@@ -240,7 +244,6 @@ def construct_chat_history(chat_id, msg_id):
     messages = []
     should_be_bot = False
     model = DEFAULT_MODEL
-    has_image = False
     while True:
         key = repr((chat_id, msg_id))
         if key not in db:
@@ -263,7 +266,6 @@ def construct_chat_history(chat_id, msg_id):
                     blob_base64 = base64.b64encode(blob).decode()
                     image_url = 'data:image/jpeg;base64,' + blob_base64
                     new_message.append({'type': 'image_url', 'image_url': {'url': image_url, 'detail': 'high'}})
-                    has_image = True
                 else:
                     raise ValueError('Unknown message type in chat history')
             message = new_message
@@ -275,7 +277,7 @@ def construct_chat_history(chat_id, msg_id):
     if len(messages) % 2 != 1:
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
         return None, None
-    return messages[::-1], model, has_image
+    return messages[::-1], model
 
 @only_admin
 async def add_whitelist_handler(message):
@@ -499,7 +501,7 @@ async def reply_handler(message):
 
     db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, None)
 
-    chat_history, model, has_image = construct_chat_history(chat_id, msg_id)
+    chat_history, model = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
         await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id)
         return
@@ -507,8 +509,6 @@ async def reply_handler(message):
     models = models if models is not None else [model]
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
-            if has_image:
-                m = VISION_MODEL
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
 def render_reply(reply, info, error, reasoning, is_generating):
