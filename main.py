@@ -23,10 +23,12 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'c$', 'model': 'claude-opus-4-1-20250805', 'prompt_template': ''},
+    {'prefix': 'c$', 'model': 'claude-sonnet-4-5-20250929', 'prompt_template': ''},
+    {'prefix': 'c41$', 'model': 'claude-opus-4-1-20250805', 'prompt_template': ''},
     {'prefix': 'c4$', 'model': 'claude-4-opus-20250514', 'prompt_template': ''},
     {'prefix': 'cs$', 'model': 'claude-4-sonnet-20250514', 'prompt_template': ''},
-    {'prefix': 'ct$', 'model': 'claude-opus-4-1-20250805 thinking', 'prompt_template': ''},
+    {'prefix': 'ct$', 'model': 'claude-sonnet-4-5-20250929 thinking', 'prompt_template': ''},
+    {'prefix': 'c41t$', 'model': 'claude-opus-4-1-20250805 thinking', 'prompt_template': ''},
     {'prefix': 'c4t$', 'model': 'claude-4-opus-20250514 thinking', 'prompt_template': ''},
     {'prefix': 'cst$', 'model': 'claude-4-sonnet-20250514 thinking', 'prompt_template': ''},
     {'prefix': 'c37s$', 'model': 'claude-3-7-sonnet-20250219', 'prompt_template': ''},
@@ -41,6 +43,7 @@ MODELS = [
 DEFAULT_MODEL = 'claude-3-opus-20240229' # For compatibility with the old database format
 
 PRICING = {
+    'claude-sonnet-4-5-20250929': (3e-6, 15e-6, 3.75e-6, 0.3e-6),
     'claude-opus-4-1-20250805': (15e-6, 75e-6, 18.75e-6, 1.5e-6),
     'claude-4-opus-20250514': (15e-6, 75e-6, 18.75e-6, 1.5e-6),
     'claude-4-sonnet-20250514': (3e-6, 15e-6, 3.75e-6, 0.3e-6),
@@ -48,6 +51,7 @@ PRICING = {
 }
 
 MODEL_MAX_TOKENS = {
+    'claude-sonnet-4-5-20250929': 64000,
     'claude-opus-4-1-20250805': 32000,
     'claude-4-opus-20250514': 32000,
     'claude-4-sonnet-20250514': 64000,
@@ -61,6 +65,7 @@ MODEL_MAX_TOKENS = {
 }
 
 MODEL_THINKING_MAX_TOKENS = {
+    'claude-sonnet-4-5-20250929': 64000,
     'claude-opus-4-1-20250805': 32000,
     'claude-4-opus-20250514': 32000,
     'claude-4-sonnet-20250514': 64000,
