@@ -1043,9 +1043,13 @@ async def main():
                     await get_whitelist_handler(event.message)
                 else:
                     await reply_handler(event.message)
-            assert await bot(functions.bots.SetBotCommandsRequest(
+            assert await bot(functions.bots.ResetBotCommandsRequest(
                 scope=types.BotCommandScopeDefault(),
                 lang_code='en',
+            ))
+            assert await bot(functions.bots.SetBotCommandsRequest(
+                scope=types.BotCommandScopeDefault(),
+                lang_code='', # make commands available in all languages
                 commands=[types.BotCommand(command, description) for command, description in [
                     ('ping', 'Test bot connectivity'),
                     ('list_models', 'List supported models'),
