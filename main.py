@@ -36,6 +36,8 @@ MODELS = [
     {'prefix': '5m$', 'model': 'gpt-5-mini-2025-08-07', 'prompt_template': ''},
     {'prefix': '5n$', 'model': 'gpt-5-nano-2025-08-07', 'prompt_template': ''},
     {'prefix': '5c$', 'model': 'gpt-5-chat-latest', 'prompt_template': ''},
+    {'prefix': 'gpt-5-pro$', 'model': 'gpt-5-pro', 'prompt_template': ''},
+    {'prefix': 'gpt-5-pro-2025-10-06$', 'model': 'gpt-5-pro-2025-10-06', 'prompt_template': ''},
 
     {'prefix': 'o3p$', 'model': 'o3-pro', 'prompt_template': ''},
     {'prefix': 'o3-pro$', 'model': 'o3-pro', 'prompt_template': ''},
@@ -154,6 +156,8 @@ PRICING = {
     'gpt-5-2025-08-07': (1.25, 10, 0.125, True),
     'gpt-5-mini-2025-08-07': (0.25, 2, 0.025, True),
     'gpt-5-nano-2025-08-07': (0.05, 0.4, 0.005, True),
+    'gpt-5-pro': (15, 120, 15, True),
+    'gpt-5-pro-2025-10-06': (15, 120, 15, True),
 }
 
 def get_prompt(model):
@@ -455,8 +459,8 @@ async def completion(chat_history, model, chat_id, msg_id, task_id, safety_ident
 
     is_reasoning_model = model.startswith('o') or model.startswith('gpt-5')
     support_stream = True # As of 2025-02-14, o1 supports streaming
-    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07']
-    support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07']
+    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06']
+    support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06']
     is_search_model = 'search' in model
     is_responses_api = model.startswith('o1-pro') or support_reasoning_summary or model.startswith('gpt-5') or tools
     if not is_responses_api:
