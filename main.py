@@ -461,6 +461,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id, safety_ident
     support_stream = True # As of 2025-02-14, o1 supports streaming
     support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06']
     support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06']
+    support_priority = model in ['gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07']
     is_search_model = 'search' in model
     is_responses_api = model.startswith('o1-pro') or support_reasoning_summary or model.startswith('gpt-5') or tools
     if not is_responses_api:
@@ -565,6 +566,8 @@ async def completion(chat_history, model, chat_id, msg_id, task_id, safety_ident
         if tools_param:
             kwargs['tools'] = tools_param
         kwargs['safety_identifier'] = safety_identifier
+        if support_priority:
+            kwargs['service_tier'] = "priority"
 
         logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r, args=%r): %s', chat_id, msg_id, task_id, model, kwargs, remove_blobs(messages))
         input_, instructions = convert_to_responses_api_input_format(messages)
