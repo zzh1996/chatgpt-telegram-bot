@@ -27,7 +27,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'g$', 'model': 'gemini-2.5-pro'},
+    {'prefix': 'g$', 'model': 'gemini-3-pro-preview'},
+    {'prefix': 'g25$', 'model': 'gemini-2.5-pro'},
     {'prefix': 'gf$', 'model': 'gemini-2.5-flash'},
     {'prefix': 'gfl$', 'model': 'gemini-2.5-flash-lite-preview-06-17'},
     {'prefix': 'g2$', 'model': 'gemini-2.0-pro-exp-02-05'},
@@ -38,6 +39,8 @@ MODELS = [
     {'prefix': 'ge$', 'model': 'gemma-3-27b-it'},
     {'prefix': 'gi$', 'model': 'gemini-2.5-flash-image-preview'},
     {'prefix': 'gi2$', 'model': 'gemini-2.0-flash-exp-image-generation'},
+
+    {'prefix': 'gemini-3-pro-preview$', 'model': 'gemini-3-pro-preview'},
 
     {'prefix': 'gemini-2.5-pro$', 'model': 'gemini-2.5-pro'},
     {'prefix': 'gemini-2.5-flash$', 'model': 'gemini-2.5-flash'},
@@ -84,6 +87,11 @@ MODELS = [
 DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
 
 def PRICING(model, input_tokens, output_tokens, input_audio_tokens, output_image_tokens):
+    if model.startswith('gemini-3-pro'):
+        if input_tokens <= 200_000: # exact conditions is not sure
+            return 2e-6 * input_tokens + 12e-6 * output_tokens
+        else:
+            return 4e-6 * input_tokens + 18e-6 * output_tokens
     if model.startswith('gemini-2.5-pro'):
         if input_tokens <= 200_000: # exact conditions is not sure
             return 1.25e-6 * input_tokens + 10e-6 * output_tokens
@@ -405,6 +413,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         'gemini-2.5-pro',
         'gemini-2.5-flash',
         'gemini-2.5-flash-lite-preview-06-17',
+        'gemini-3-pro-preview',
     ]
     is_image_generation_model = model in [
         'gemini-2.0-flash-exp-image-generation',
@@ -429,8 +438,11 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             thinking_budget=32768 if model in [
                 'gemini-2.5-pro-preview-06-05',
                 'gemini-2.5-pro',
+                'gemini-3-pro-preview',
             ] else 24576,
         )
+        if model == 'gemini-3-pro-preview':
+            config.thinking_config.thinking_budget = 65535
 
     if is_image_generation_model:
         config.response_modalities = ["image", "text"]
