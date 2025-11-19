@@ -23,10 +23,13 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'x$', 'model': 'grok-4-fast-reasoning', 'prompt_template': ''},
-    {'prefix': 'x4$', 'model': 'grok-4-0709', 'prompt_template': ''},
+    {'prefix': 'x$', 'model': 'grok-4-1-fast-reasoning', 'prompt_template': ''},
+    {'prefix': 'x4$', 'model': 'grok-4-fast-reasoning', 'prompt_template': ''},
     {'prefix': 'x3$', 'model': 'grok-3-fast', 'prompt_template': ''},
     {'prefix': 'x3m$', 'model': 'grok-3-mini-fast', 'prompt_template': ''},
+
+    {'prefix': 'grok-4-1-fast-reasoning$', 'model': 'grok-4-1-fast-reasoning', 'prompt_template': ''},
+    {'prefix': 'grok-4-1-fast-non-reasoning$', 'model': 'grok-4-1-fast-non-reasoning', 'prompt_template': ''},
     {'prefix': 'grok-code-fast-1$', 'model': 'grok-code-fast-1', 'prompt_template': ''},
     {'prefix': 'grok-4-fast-non-reasoning$', 'model': 'grok-4-fast-non-reasoning', 'prompt_template': ''},
     {'prefix': 'grok-4-fast-reasoning$', 'model': 'grok-4-fast-reasoning', 'prompt_template': ''},
