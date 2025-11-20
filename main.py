@@ -462,13 +462,18 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     config.tools = config_tools
 
     def remove_response_blobs(response):
-        if response.candidates is not None and len(response.candidates) == 1:
-            obj = response.candidates[0]
-            if obj.content is not None and obj.content.parts is not None and len(obj.content.parts) == 1:
-                if obj.content.parts[0].inline_data is not None:
-                    response_new = response.model_copy(deep=True)
-                    response_new.candidates[0].content.parts[0].inline_data = b'...'
-                    return response_new
+        response = response.model_dump(exclude_none=True)
+        if "sdk_http_response" in response:
+            del response["sdk_http_response"]
+        if "candidates" in response:
+            for obj in response["candidates"]:
+                if "content" in obj and "parts" in obj["content"] and len(obj["content"]["parts"]) == 1:
+                    for part in obj["content"]["parts"]:
+                        if "inline_data" in part:
+                            if "data" in part["inline_data"] and len(part["inline_data"]["data"]) > 100:
+                                part["inline_data"]["data"] = f"({len(part['inline_data']['data'])} bytes of data)"
+                        if "thought_signature" in part and len(part["thought_signature"]) > 100:
+                            part["thought_signature"] = f"({len(part['thought_signature'])} bytes of data)"
         return response
 
     stream = await client.aio.models.generate_content_stream(
