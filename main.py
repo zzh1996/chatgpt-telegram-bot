@@ -88,12 +88,14 @@ MODELS = [
 DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
 
 def PRICING(model, input_tokens, output_tokens, input_audio_tokens, output_image_tokens):
-    if model.startswith('gemini-3-pro'):
+    if model == 'gemini-3-pro-image-preview':
+        return 2e-6 * input_tokens + 12e-6 * (output_tokens - output_image_tokens) + 120e-6 * output_image_tokens
+    elif model.startswith('gemini-3-pro'):
         if input_tokens <= 200_000: # exact conditions is not sure
             return 2e-6 * input_tokens + 12e-6 * output_tokens
         else:
             return 4e-6 * input_tokens + 18e-6 * output_tokens
-    if model.startswith('gemini-2.5-pro'):
+    elif model.startswith('gemini-2.5-pro'):
         if input_tokens <= 200_000: # exact conditions is not sure
             return 1.25e-6 * input_tokens + 10e-6 * output_tokens
         else:
@@ -112,7 +114,6 @@ def PRICING(model, input_tokens, output_tokens, input_audio_tokens, output_image
         return 0.075e-6 * input_tokens + 0.3e-6 * output_tokens
 
 client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
-client_vertex = genai.Client(vertexai=True, api_key=os.getenv('GOOGLE_CLOUD_API_KEY'))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
@@ -470,18 +471,11 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                     return response_new
         return response
 
-    if model == 'gemini-3-pro-image-preview':
-        stream = await client_vertex.aio.models.generate_content_stream(
-            model=model,
-            contents=contents,
-            config=config,
-        )
-    else:
-        stream = await client.aio.models.generate_content_stream(
-            model=model,
-            contents=contents,
-            config=config,
-        )
+    stream = await client.aio.models.generate_content_stream(
+        model=model,
+        contents=contents,
+        config=config,
+    )
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %r', chat_id, msg_id, task_id, remove_response_blobs(response))
         response: gtypes.GenerateContentResponse
