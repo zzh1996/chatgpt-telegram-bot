@@ -37,7 +37,8 @@ MODELS = [
     {'prefix': 'g1$', 'model': 'gemini-1.0-pro-latest', 'vision_model': 'gemini-pro-vision'},
     {'prefix': 'gt$', 'model': 'gemini-2.0-flash-thinking-exp-01-21'},
     {'prefix': 'ge$', 'model': 'gemma-3-27b-it'},
-    {'prefix': 'gi$', 'model': 'gemini-2.5-flash-image-preview'},
+    {'prefix': 'gi$', 'model': 'gemini-3-pro-image-preview'},
+    {'prefix': 'gi25$', 'model': 'gemini-2.5-flash-image-preview'},
     {'prefix': 'gi2$', 'model': 'gemini-2.0-flash-exp-image-generation'},
 
     {'prefix': 'gemini-3-pro-preview$', 'model': 'gemini-3-pro-preview'},
@@ -111,6 +112,7 @@ def PRICING(model, input_tokens, output_tokens, input_audio_tokens, output_image
         return 0.075e-6 * input_tokens + 0.3e-6 * output_tokens
 
 client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
+client_vertex = genai.Client(vertexai=True, api_key=os.getenv('GOOGLE_CLOUD_API_KEY'))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
@@ -416,6 +418,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         'gemini-3-pro-preview',
     ]
     is_image_generation_model = model in [
+        'gemini-3-pro-image-preview',
         'gemini-2.0-flash-exp-image-generation',
         'gemini-2.5-flash-image-preview'
     ]
@@ -467,11 +470,18 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                     return response_new
         return response
 
-    stream = await client.aio.models.generate_content_stream(
-        model=model,
-        contents=contents,
-        config=config,
-    )
+    if model == 'gemini-3-pro-image-preview':
+        stream = await client_vertex.aio.models.generate_content_stream(
+            model=model,
+            contents=contents,
+            config=config,
+        )
+    else:
+        stream = await client.aio.models.generate_content_stream(
+            model=model,
+            contents=contents,
+            config=config,
+        )
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %r', chat_id, msg_id, task_id, remove_response_blobs(response))
         response: gtypes.GenerateContentResponse
@@ -535,11 +545,12 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             input_audio_tokens = 0
             input_image_tokens = 0
             output_image_tokens = 0
-            for mod in usage.prompt_tokens_details:
-                if mod.modality == 'AUDIO':
-                    input_audio_tokens += mod.token_count
-                elif mod.modality == 'IMAGE':
-                    input_image_tokens += mod.token_count
+            if usage.prompt_tokens_details is not None:
+                for mod in usage.prompt_tokens_details:
+                    if mod.modality == 'AUDIO':
+                        input_audio_tokens += mod.token_count
+                    elif mod.modality == 'IMAGE':
+                        input_image_tokens += mod.token_count
             if usage.candidates_tokens_details is not None:
                 for mod in usage.candidates_tokens_details:
                     if mod.modality == 'IMAGE':
