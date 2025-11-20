@@ -30,7 +30,7 @@ GPT_4_TURBO_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI,
 GPT_4O_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2023-10\nCurrent date: {current_date}'
 
 MODELS = [
-    {'prefix': '$', 'model': 'gpt-5-chat-latest', 'prompt_template': ''},
+    {'prefix': '$', 'model': 'gpt-5.1-chat-latest', 'prompt_template': ''},
 
     {'prefix': '51$', 'model': 'gpt-5.1-2025-11-13', 'prompt_template': ''},
     {'prefix': '51c$', 'model': 'gpt-5.1-chat-latest', 'prompt_template': ''},
