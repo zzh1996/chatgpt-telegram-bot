@@ -362,6 +362,22 @@ def load_file(h):
     with open(path, 'rb') as f:
         return f.read()
 
+def save_blob(file_blob):
+    h = hashlib.sha256(file_blob).hexdigest()
+    dir = f'blobs/{h[:2]}/{h[2:4]}'
+    path = f'{dir}/{h}'
+    if not os.path.isfile(path):
+        os.makedirs(dir, exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(file_blob)
+    return h
+
+def load_blob(h):
+    dir = f'blobs/{h[:2]}/{h[2:4]}'
+    path = f'{dir}/{h}'
+    with open(path, 'rb') as f:
+        return f.read()
+
 async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_history = [user, ai, user, ai, ..., user]
     tools = ''
     if '+' in model:
@@ -382,7 +398,9 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 if isinstance(message['parts'], list):
                     for obj in message['parts']:
                         if isinstance(obj, dict) and 'data' in obj:
-                            obj['data'] = '...'
+                            obj['data'] = f"({len(obj['data'])} bytes of data)"
+                        if isinstance(obj, dict) and 'thought_signature' in obj:
+                            obj['thought_signature'] = f"({len(obj['thought_signature'])} bytes of data)"
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_blobs(messages))
 
@@ -390,16 +408,18 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     for message in messages:
         parts = []
         for part in message['parts']:
-            if isinstance(part, str):
+            if 'text' in part:
                 if message['role'] == 'user':
                     youtube_re = r'@https://(?:(?:(?:www\.|m\.)?youtube\.com)|youtu\.be)/[a-zA-Z0-9./?=&%_~#:-]+'
-                    youtube_urls = re.findall(youtube_re, part)
+                    youtube_urls = re.findall(youtube_re, part['text'])
                     for url in youtube_urls:
                         url = url[1:]
                         parts.append(gtypes.Part(file_data=gtypes.FileData(file_uri=url)))
-                parts.append(gtypes.Part.from_text(text=part))
+                parts.append(gtypes.Part.from_text(text=part['text']))
             else:
                 parts.append(gtypes.Part.from_bytes(data=part['data'], mime_type=part['mime_type']))
+            if 'thought_signature' in part:
+                parts[-1].thought_signature = part['thought_signature']
         contents.append(gtypes.Content(
             role=message['role'],
             parts=parts,
@@ -510,6 +530,8 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                     assert obj.content.parts[0].function_response is None
                     if obj.content.parts[0].inline_data is not None:
                         yield {'type': 'image', 'data': obj.content.parts[0].inline_data.data}
+                    if obj.content.parts[0].thought_signature is not None:
+                        yield {'type': 'thought_signature', 'data': obj.content.parts[0].thought_signature}
             # assert obj.citation_metadata is None # TODO: show citations when uploading file
             # assert obj.grounding_metadata is None # TODO: show grounding when using google search
             assert obj.finish_message is None
@@ -586,7 +608,7 @@ def construct_chat_history(chat_id, msg_id):
         new_message = []
         for obj in message:
             if obj['type'] == 'text':
-                new_message.append(obj['text'])
+                new_message.append({'text': obj['text']})
             elif obj['type'] == 'image':
                 blob = load_photo(obj['hash'])
                 new_message.append({'mime_type': 'image/jpeg', 'data': blob})
@@ -594,6 +616,10 @@ def construct_chat_history(chat_id, msg_id):
             elif obj['type'] == 'file':
                 blob = load_file(obj['file']['hash'])
                 new_message.append({'mime_type': obj['file']['mime_type'], 'data': blob})
+            elif obj['type'] == 'thought_signature':
+                blob = load_blob(obj['hash'])
+                assert len(new_message) > 0
+                new_message[-1]['thought_signature'] = blob
             else:
                 raise ValueError('Unknown message type in chat history')
         message = new_message
@@ -873,6 +899,8 @@ def render_reply(reply, info, error, reasoning, is_generating):
             result += RichText.from_markdown(part['text'])
         elif part['type'] == 'image':
             result += RichTextParts.Image(part['hash'])
+        elif part['type'] == 'thought_signature':
+            pass
         else:
             raise ValueError(f"Unknown type: {part['type']}")
     if reasoning:
@@ -913,6 +941,9 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                         info = delta['text']
                     elif delta['type'] == 'reasoning':
                         reasoning += delta['text']
+                    elif delta['type'] == 'thought_signature':
+                        blob_hash = save_blob(delta['data'])
+                        reply.append({'type': 'thought_signature', 'hash': blob_hash})
                     replymsgs.update(render_reply(reply, info, error, reasoning, True))
                 replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 await replymsgs.finalize()
