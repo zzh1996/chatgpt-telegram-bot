@@ -119,6 +119,7 @@ TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
 
 TELEGRAM_LENGTH_LIMIT = 4096
+TELEGRAM_IMAGE_TEXT_LENGTH_LIMIT = 1024
 TELEGRAM_MIN_INTERVAL = 3
 OPENAI_MAX_RETRY = 3
 OPENAI_RETRY_INTERVAL = 30
@@ -452,21 +453,25 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             gtypes.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='OFF'),
             gtypes.SafetySetting(category='HARM_CATEGORY_CIVIC_INTEGRITY', threshold='OFF'),
         ],
-        # media_resolution='MEDIA_RESOLUTION_HIGH', # Media resolution is not enabled for api version v1beta
         http_options=gtypes.HttpOptions(timeout=600000),
     )
 
     if is_reasoning_model:
-        config.thinking_config = gtypes.ThinkingConfig(
-            include_thoughts=True,
-            thinking_budget=32768 if model in [
-                'gemini-2.5-pro-preview-06-05',
-                'gemini-2.5-pro',
-                'gemini-3-pro-preview',
-            ] else 24576,
-        )
-        if model == 'gemini-3-pro-preview':
-            config.thinking_config.thinking_budget = 65535
+        if model.startswith('gemini-3'):
+            config.thinking_config = gtypes.ThinkingConfig(
+                include_thoughts=True,
+                thinking_level='high',
+            )
+            config.media_resolution = gtypes.MediaResolution.MEDIA_RESOLUTION_HIGH
+        else:
+            config.thinking_config = gtypes.ThinkingConfig(
+                include_thoughts=True,
+                thinking_budget=32768 if model in [
+                    'gemini-2.5-pro-preview-06-05',
+                    'gemini-2.5-pro',
+                    'gemini-3-pro-preview',
+                ] else 24576,
+            )
 
     if is_image_generation_model:
         config.response_modalities = ["image", "text"]
@@ -669,6 +674,7 @@ class BotReplyMessages:
     def __init__(self, chat_id, orig_msg_id, prefix):
         self.prefix = prefix
         self.msg_len = TELEGRAM_LENGTH_LIMIT - len(prefix)
+        self.image_msg_len = TELEGRAM_IMAGE_TEXT_LENGTH_LIMIT - len(prefix)
         assert self.msg_len > 0
         self.chat_id = chat_id
         self.orig_msg_id = orig_msg_id
@@ -687,7 +693,7 @@ class BotReplyMessages:
             pending_reply_manager.remove((self.chat_id, msg_id))
 
     async def _update(self, session, text):
-        slices = RichTextParts(text).to_slices(self.msg_len)
+        slices = RichTextParts(text).to_slices(self.msg_len, self.image_msg_len)
         if not slices:
             slices = [''] # deal with empty message
 

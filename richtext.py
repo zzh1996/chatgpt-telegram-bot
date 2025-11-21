@@ -58,13 +58,25 @@ class RichTextParts:
             return False
         return self.parts == value.parts
 
-    def to_slices(self, slice_size):
+    def to_slices(self, slice_size, image_slice_size):
         slices = []
+        image_buffer = None
         for part in self.parts:
             if part['type'] == 'richtext':
-                slices.extend(part['content'].to_slices(slice_size))
+                if image_buffer is not None:
+                    image_text = part['content'][:image_slice_size]
+                    slices.append(image_text + RichTextParts([image_buffer]))
+                    if len(part['content']) > image_slice_size:
+                        slices.extend(part['content'][image_slice_size:].to_slices(slice_size))
+                    image_buffer = None
+                else:
+                    slices.extend(part['content'].to_slices(slice_size))
             elif part['type'] == 'image':
-                slices.append(RichTextParts([part]))
+                if image_buffer is not None:
+                    slices.append(RichTextParts([image_buffer]))
+                image_buffer = part
+        if image_buffer is not None:
+            slices.append(RichTextParts([image_buffer]))
         return slices
 
 class RichText:
