@@ -812,6 +812,9 @@ async def reply_handler(message):
         if not models:
             return
 
+    if message.photo is not None and extra_photo_message is not None:
+        await send_message(chat_id, '[!] Error: Cannot send photo in both message and replied message', msg_id)
+        return
     photo_message = message if message.photo is not None else extra_photo_message
     photo_hashes = []
     if photo_message is not None:
@@ -821,6 +824,9 @@ async def reply_handler(message):
             if grouped_id not in albums:
                 await send_message(chat_id, f'[!] Error: Historical photo album cannot be accessed by bot. Please forward or resend.', msg_id)
                 return
+            if message.is_reply and message.photo is not None: # reply with an album
+                if msg_id != min(m.id for m in albums[grouped_id]):
+                    return
             for msg in sorted(albums[grouped_id], key=lambda m: m.id):
                 photo_blob = await msg.download_media(bytes)
                 photo_hashes.append(save_photo(photo_blob))
