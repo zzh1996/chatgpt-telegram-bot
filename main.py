@@ -475,6 +475,26 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
 
     if is_image_generation_model:
         config.response_modalities = ["image", "text"]
+        if model.startswith('gemini-3'):
+            image_size = '2K'
+            aspect_ratio = None
+            if '1' in tools:
+                image_size = '1K'
+            if '2' in tools:
+                image_size = '2K'
+            if '4' in tools:
+                image_size = '4K'
+            if 'S' in tools:
+                aspect_ratio = '1:1'
+            if 'W' in tools:
+                aspect_ratio = '16:9'
+            if 'H' in tools:
+                aspect_ratio = '9:16'
+            if 'w' in tools:
+                aspect_ratio = '4:3'
+            if 'h' in tools:
+                aspect_ratio = '3:4'
+            config.image_config = gtypes.ImageConfig(image_size=image_size, aspect_ratio=aspect_ratio)
 
     config_tools = []
     for tool in tools:
@@ -798,7 +818,7 @@ async def reply_handler(message):
                     break
                 elif m['prefix'] == t.strip().split('+', 1)[0] + '$':
                     tools = t.strip().split('+', 1)[1]
-                    if not set(tools) <= set('scu') or not tools:
+                    if not set(tools) <= set('scu124SWHwh') or not tools:
                         await send_message(chat_id, '[!] Error: Unknown tools in prefix', msg_id)
                         return
                     models.append(m['model'] + '+' + tools)
