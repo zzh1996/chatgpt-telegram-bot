@@ -512,7 +512,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             del response["sdk_http_response"]
         if "candidates" in response:
             for obj in response["candidates"]:
-                if "content" in obj and "parts" in obj["content"] and len(obj["content"]["parts"]) == 1:
+                if "content" in obj and "parts" in obj["content"]:
                     for part in obj["content"]["parts"]:
                         if "inline_data" in part:
                             if "data" in part["inline_data"] and len(part["inline_data"]["data"]) > 100:
@@ -536,27 +536,27 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 if obj.content.role is not None:
                     assert obj.content.role == 'model'
                 if obj.content.parts is not None:
-                    assert len(obj.content.parts) == 1
-                    if obj.content.parts[0].text is not None:
-                        if obj.content.parts[0].thought is not None and obj.content.parts[0].thought:
-                            yield {'type': 'reasoning', 'text': obj.content.parts[0].text}
-                        else:
-                            yield {'type': 'text', 'text': obj.content.parts[0].text}
-                    assert obj.content.parts[0].video_metadata is None
-                    if obj.content.parts[0].code_execution_result is not None:
-                        markdown = f'\n```\n{obj.content.parts[0].code_execution_result.output}\n```\n'
-                        yield {'type': 'text', 'text': markdown}
-                    if obj.content.parts[0].executable_code is not None:
-                        code = obj.content.parts[0].executable_code
-                        markdown = f'\n```{code.language.lower()}\n{code.code}\n```\n'
-                        yield {'type': 'text', 'text': markdown}
-                    assert obj.content.parts[0].file_data is None
-                    assert obj.content.parts[0].function_call is None
-                    assert obj.content.parts[0].function_response is None
-                    if obj.content.parts[0].inline_data is not None:
-                        yield {'type': 'image', 'data': obj.content.parts[0].inline_data.data}
-                    if obj.content.parts[0].thought_signature is not None:
-                        yield {'type': 'thought_signature', 'data': obj.content.parts[0].thought_signature}
+                    for part in obj.content.parts:
+                        if part.text is not None:
+                            if part.thought is not None and part.thought:
+                                yield {'type': 'reasoning', 'text': part.text}
+                            else:
+                                yield {'type': 'text', 'text': part.text}
+                        assert part.video_metadata is None
+                        if part.code_execution_result is not None:
+                            markdown = f'\n```\n{part.code_execution_result.output}\n```\n'
+                            yield {'type': 'text', 'text': markdown}
+                        if part.executable_code is not None:
+                            code = part.executable_code
+                            markdown = f'\n```{code.language.lower()}\n{code.code}\n```\n'
+                            yield {'type': 'text', 'text': markdown}
+                        assert part.file_data is None
+                        assert part.function_call is None
+                        assert part.function_response is None
+                        if part.inline_data is not None:
+                            yield {'type': 'image', 'data': part.inline_data.data}
+                        if part.thought_signature is not None:
+                            yield {'type': 'thought_signature', 'data': part.thought_signature}
             # assert obj.citation_metadata is None # TODO: show citations when uploading file
             # assert obj.grounding_metadata is None # TODO: show grounding when using google search
             assert obj.finish_message is None
