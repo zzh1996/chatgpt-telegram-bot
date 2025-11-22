@@ -453,7 +453,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             gtypes.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='OFF'),
             gtypes.SafetySetting(category='HARM_CATEGORY_CIVIC_INTEGRITY', threshold='OFF'),
         ],
-        http_options=gtypes.HttpOptions(timeout=600000),
+        http_options=gtypes.HttpOptions(timeout=3600000),
     )
 
     if is_reasoning_model:
