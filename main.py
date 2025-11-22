@@ -962,6 +962,8 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                             continue
                         if reply and reply[-1]['type'] == 'text':
                             reply[-1]['text'] += delta['text']
+                        elif len(reply) >= 2 and reply[-1]['type'] == 'thought_signature' and reply[-2]['type'] == 'text':
+                            reply[-2]['text'] += delta['text']
                         else:
                             reply.append({'type': 'text', 'text': delta['text']})
                     elif delta['type'] == 'image':
