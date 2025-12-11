@@ -30,7 +30,10 @@ GPT_4_TURBO_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI,
 GPT_4O_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, based on the GPT-4 architecture.\nKnowledge cutoff: 2023-10\nCurrent date: {current_date}'
 
 MODELS = [
-    {'prefix': '$', 'model': 'gpt-5.1-chat-latest', 'prompt_template': ''},
+    {'prefix': '$', 'model': 'gpt-5.2-chat-latest', 'prompt_template': ''},
+
+    {'prefix': '52$', 'model': 'gpt-5.2-2025-12-11', 'prompt_template': ''},
+    {'prefix': '52c$', 'model': 'gpt-5.2-chat-latest', 'prompt_template': ''},
 
     {'prefix': '51$', 'model': 'gpt-5.1-2025-11-13', 'prompt_template': ''},
     {'prefix': '51c$', 'model': 'gpt-5.1-chat-latest', 'prompt_template': ''},
@@ -164,6 +167,9 @@ PRICING = {
 
     'gpt-5.1-chat-latest': (1.25, 10, 0.125, False),
     'gpt-5.1-2025-11-13': (1.25, 10, 0.125, True),
+
+    'gpt-5.2-chat-latest': (1.75, 14, 0.175, False),
+    'gpt-5.2-2025-12-11': (1.75, 14, 0.175, True),
 }
 
 def get_prompt(model):
@@ -465,9 +471,10 @@ async def completion(chat_history, model, chat_id, msg_id, task_id, safety_ident
 
     is_reasoning_model = model.startswith('o') or model.startswith('gpt-5')
     support_stream = True # As of 2025-02-14, o1 supports streaming
-    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06', 'gpt-5.1-2025-11-13']
-    support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06', 'gpt-5.1-2025-11-13', 'gpt-5.1-chat-latest']
-    support_priority = model in ['gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5.1-2025-11-13']
+    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06', 'gpt-5.1-2025-11-13', 'gpt-5.2-2025-12-11']
+    support_reasoning_effort_xhigh = model in ['gpt-5.2-2025-12-11']
+    support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06', 'gpt-5.1-2025-11-13', 'gpt-5.1-chat-latest', 'gpt-5.2-2025-12-11', 'gpt-5.2-chat-latest']
+    support_priority = model in ['gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5.1-2025-11-13', 'gpt-5.2-2025-12-11']
     is_search_model = 'search' in model
     is_responses_api = model.startswith('o1-pro') or support_reasoning_summary or model.startswith('gpt-5') or tools
     if not is_responses_api:
@@ -478,7 +485,10 @@ async def completion(chat_history, model, chat_id, msg_id, task_id, safety_ident
         if is_reasoning_model:
             kwargs['timeout'] = httpx.Timeout(timeout=3600, connect=15)
         if support_reasoning_effort:
-            kwargs['reasoning_effort'] = 'high'
+            if support_reasoning_effort_xhigh:
+                kwargs['reasoning_effort'] = 'xhigh'
+            else:
+                kwargs['reasoning_effort'] = 'high'
         if is_search_model:
             kwargs['web_search_options'] = {'search_context_size': 'high'}
         kwargs['safety_identifier'] = safety_identifier
@@ -554,7 +564,10 @@ async def completion(chat_history, model, chat_id, msg_id, task_id, safety_ident
         if support_reasoning_effort:
             if 'reasoning' not in kwargs:
                 kwargs['reasoning'] = {}
-            kwargs['reasoning']['effort'] = 'high'
+            if support_reasoning_effort_xhigh:
+                kwargs['reasoning']['effort'] = 'xhigh'
+            else:
+                kwargs['reasoning']['effort'] = 'high'
         if support_reasoning_summary:
             if 'reasoning' not in kwargs:
                 kwargs['reasoning'] = {}
