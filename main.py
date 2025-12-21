@@ -29,7 +29,7 @@ ADMIN_ID = 71863318
 MODELS = [
     {'prefix': 'g$', 'model': 'gemini-3-pro-preview'},
     {'prefix': 'g25$', 'model': 'gemini-2.5-pro'},
-    {'prefix': 'gf$', 'model': 'gemini-2.5-flash'},
+    {'prefix': 'gf$', 'model': 'gemini-3-flash-preview'},
     {'prefix': 'gfl$', 'model': 'gemini-2.5-flash-lite-preview-06-17'},
     {'prefix': 'g2$', 'model': 'gemini-2.0-pro-exp-02-05'},
     {'prefix': 'g2f$', 'model': 'gemini-2.0-flash'},
@@ -42,6 +42,7 @@ MODELS = [
     {'prefix': 'gi2$', 'model': 'gemini-2.0-flash-exp-image-generation'},
 
     {'prefix': 'gemini-3-pro-preview$', 'model': 'gemini-3-pro-preview'},
+    {'prefix': 'gemini-3-flash-preview$', 'model': 'gemini-3-flash-preview'},
 
     {'prefix': 'gemini-2.5-pro$', 'model': 'gemini-2.5-pro'},
     {'prefix': 'gemini-2.5-flash$', 'model': 'gemini-2.5-flash'},
@@ -95,6 +96,8 @@ def PRICING(model, input_tokens, output_tokens, input_audio_tokens, output_image
             return 2e-6 * input_tokens + 12e-6 * output_tokens
         else:
             return 4e-6 * input_tokens + 18e-6 * output_tokens
+    elif model.startswith('gemini-3-flash-preview'):
+        return 0.5e-6 * (input_tokens - input_audio_tokens) + 3e-6 * output_tokens + 1e-6 * input_audio_tokens
     elif model.startswith('gemini-2.5-pro'):
         if input_tokens <= 200_000: # exact conditions is not sure
             return 1.25e-6 * input_tokens + 10e-6 * output_tokens
@@ -438,6 +441,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         'gemini-2.5-flash',
         'gemini-2.5-flash-lite-preview-06-17',
         'gemini-3-pro-preview',
+        'gemini-3-flash-preview',
     ]
     is_image_generation_model = model in [
         'gemini-3-pro-image-preview',
