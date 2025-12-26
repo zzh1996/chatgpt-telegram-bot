@@ -767,6 +767,8 @@ class BotReplyMessages:
             pending_reply_manager.remove((self.chat_id, msg_id))
 
     async def _update(self, session, text):
+        if isinstance(text, LazyRenderReply):
+            text = text.render()
         slices = []
         while len(text) > self.msg_len:
             slices.append(text[:self.msg_len])
@@ -961,19 +963,27 @@ async def reply_handler(message):
         for task_id, m in enumerate(models):
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id, safety_identifier))
 
-def render_reply(reply, info, error, reasoning, is_generating):
-    result = ''
-    for part in reasoning:
-        if part:
-            result += RichText.Quote(part, not is_generating) + '\n'
-    result += RichText.from_markdown(reply)
-    if info:
-        result += '\n' + RichText.Quote(info)
-    if error:
-        result += '\n' + RichText.Quote(RichText.Bold(error))
-    if is_generating:
-        result += '\n' + RichText.Italic('[!Generating...]')
-    return result
+class LazyRenderReply:
+    def __init__(self, reply, info, error, reasoning, is_generating):
+        self.reply = copy.deepcopy(reply)
+        self.info = copy.deepcopy(info)
+        self.error = copy.deepcopy(error)
+        self.reasoning = copy.deepcopy(reasoning)
+        self.is_generating = is_generating
+
+    def render(self):
+        result = ''
+        for part in self.reasoning:
+            if part:
+                result += RichText.Quote(part, not self.is_generating) + '\n'
+        result += RichText.from_markdown(self.reply)
+        if self.info:
+            result += '\n' + RichText.Quote(self.info)
+        if self.error:
+            result += '\n' + RichText.Quote(RichText.Bold(self.error))
+        if self.is_generating:
+            result += '\n' + RichText.Italic('[!Generating...]')
+        return result
 
 async def process_request(chat_id, msg_id, chat_history, model, task_id, safety_identifier):
     error_cnt = 0
@@ -984,7 +994,7 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id, safety_
         reasoning = []
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
-                replymsgs.update(render_reply(reply, info, error, reasoning, True))
+                replymsgs.update(LazyRenderReply(reply, info, error, reasoning, True))
                 stream = completion(chat_history, model, chat_id, msg_id, task_id, safety_identifier)
                 async for delta in stream:
                     if delta['type'] == 'text':
@@ -1000,8 +1010,8 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id, safety_
                     elif delta['type'] == 'reasoning_delimiter':
                         if reasoning and reasoning[-1]:
                             reasoning.append('')
-                    replymsgs.update(render_reply(reply, info, error, reasoning, True))
-                replymsgs.update(render_reply(reply, info, error, reasoning, False))
+                    replymsgs.update(LazyRenderReply(reply, info, error, reasoning, True))
+                replymsgs.update(LazyRenderReply(reply, info, error, reasoning, False))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
                     db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
@@ -1013,7 +1023,7 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id, safety_
                 error += f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}\n'
                 if will_retry:
                     error += f'Retrying ({error_cnt}/{OPENAI_MAX_RETRY})...\n'
-                replymsgs.update(render_reply(reply, info, error, reasoning, False))
+                replymsgs.update(LazyRenderReply(reply, info, error, reasoning, False))
                 if will_retry:
                     await asyncio.sleep(OPENAI_RETRY_INTERVAL)
                 if not will_retry:
