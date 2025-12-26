@@ -85,7 +85,7 @@ class RichText:
             self.children = [{'type': 'text', 'content': s}]
         elif isinstance(s, RichText):
             self.children = s.children
-        elif isinstance(s, list) and s and all(isinstance(c, dict) for c in s) and all('type' in c and 'content' in c for c in s):
+        elif isinstance(s, list) and s:
             self.children = s
         else:
             raise ValueError(f"Unsupported type: {type(s)}")
@@ -127,11 +127,15 @@ class RichText:
     def __repr__(self):
         return f'RichText({self.children})'
 
+    # for performance optimization
+    def is_empty(self):
+        return len(self.children) == 1 and self.children[0]['type'] == 'text' and self.children[0]['content'] == ''
+
     def __add__(self, value):
         if isinstance(value, RichText):
-            if len(self) == 0:
+            if self.is_empty():
                 return value
-            if len(value) == 0:
+            if value.is_empty():
                 return self
             self_last = self.children[-1].copy()
             value_first = value.children[0].copy()
