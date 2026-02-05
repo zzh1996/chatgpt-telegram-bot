@@ -23,7 +23,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'c$', 'model': 'claude-opus-4-5-20251101', 'prompt_template': ''},
+    {'prefix': 'c$', 'model': 'claude-opus-4-6', 'prompt_template': ''},
+    {'prefix': 'c45o$', 'model': 'claude-opus-4-5-20251101', 'prompt_template': ''},
     {'prefix': 'c45s$', 'model': 'claude-sonnet-4-5-20250929', 'prompt_template': ''},
     {'prefix': 'c41$', 'model': 'claude-opus-4-1-20250805', 'prompt_template': ''},
     {'prefix': 'c4$', 'model': 'claude-4-opus-20250514', 'prompt_template': ''},
@@ -45,6 +46,7 @@ MODELS = [
 DEFAULT_MODEL = 'claude-3-opus-20240229' # For compatibility with the old database format
 
 PRICING = {
+    'claude-opus-4-6': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
     'claude-opus-4-5-20251101': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
     'claude-sonnet-4-5-20250929': (3e-6, 15e-6, 3.75e-6, 0.3e-6),
     'claude-opus-4-1-20250805': (15e-6, 75e-6, 18.75e-6, 1.5e-6),
@@ -54,6 +56,7 @@ PRICING = {
 }
 
 MODEL_MAX_TOKENS = {
+    'claude-opus-4-6': 128000,
     'claude-opus-4-5-20251101': 64000,
     'claude-sonnet-4-5-20250929': 64000,
     'claude-opus-4-1-20250805': 32000,
@@ -69,6 +72,7 @@ MODEL_MAX_TOKENS = {
 }
 
 MODEL_THINKING_MAX_TOKENS = {
+    'claude-opus-4-6': 128000,
     'claude-opus-4-5-20251101': 64000,
     'claude-sonnet-4-5-20250929': 64000,
     'claude-opus-4-1-20250805': 32000,
@@ -278,7 +282,20 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['source']['data'] = obj['source']['data'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_blobs(messages))
-    if model.endswith(' thinking'):
+    if model == 'claude-opus-4-6':
+        stream = await aclient.messages.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            max_tokens=MODEL_THINKING_MAX_TOKENS[model],
+            thinking={
+                "type": "adaptive",
+            },
+            output_config={
+                "effort": "max",
+            },
+        )
+    elif model.endswith(' thinking'):
         model=model.split()[0]
         stream = await aclient.beta.messages.create(
             model=model,
