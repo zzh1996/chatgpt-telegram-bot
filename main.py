@@ -22,10 +22,11 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'db$', 'model': 'doubao-seed-1-6-250615', 'prompt_template': ''},
-    {'prefix': 'dbt$', 'model': 'doubao-seed-1-6-thinking-250715', 'prompt_template': ''},
-    {'prefix': 'dbf$', 'model': 'doubao-seed-1-6-flash-250828', 'prompt_template': ''},
-    {'prefix': 'dbv$', 'model': 'doubao-seed-1-6-vision-250815', 'prompt_template': ''},
+    {'prefix': 'db$', 'model': 'doubao-seed-1-8-251228', 'prompt_template': ''},
+    {'prefix': 'db16$', 'model': 'doubao-seed-1-6-250615', 'prompt_template': ''},
+    {'prefix': 'db16t$', 'model': 'doubao-seed-1-6-thinking-250715', 'prompt_template': ''},
+    {'prefix': 'db16f$', 'model': 'doubao-seed-1-6-flash-250828', 'prompt_template': ''},
+    {'prefix': 'db16v$', 'model': 'doubao-seed-1-6-vision-250815', 'prompt_template': ''},
     {'prefix': 'db15$', 'model': 'doubao-1.5-pro-32k-250115', 'prompt_template': ''},
     {'prefix': 'db15t$', 'model': 'doubao-1.5-thinking-pro-250415', 'prompt_template': ''},
     {'prefix': 'db15v$', 'model': 'doubao-1.5-vision-pro-32k-250115', 'prompt_template': ''},
@@ -196,7 +197,10 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r): %s', chat_id, msg_id, task_id, model, remove_image(messages))
-    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
+    kwargs = {}
+    if model == 'doubao-seed-1-8-251228':
+        kwargs['reasoning_effort'] = 'high'
+    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, **kwargs)
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
