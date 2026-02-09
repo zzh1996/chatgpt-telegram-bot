@@ -22,7 +22,7 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'm$', 'model': 'moonshot-v1-8k', 'prompt_template': ''},
+    {'prefix': 'm$', 'model': 'kimi-k2.5', 'prompt_template': ''},
     {'prefix': 'k2$', 'model': 'kimi-k2-0711-preview', 'prompt_template': ''},
     {'prefix': 'moonshot-v1-8k$', 'model': 'moonshot-v1-8k', 'prompt_template': ''},
     {'prefix': 'moonshot-v1-32k$', 'model': 'moonshot-v1-32k', 'prompt_template': ''},
@@ -32,7 +32,6 @@ MODELS = [
     {'prefix': 'moonshot-v1-128k-vision-preview$', 'model': 'moonshot-v1-128k-vision-preview', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'moonshot-v1-8k' # For compatibility with the old database format
-VISION_MODEL = 'moonshot-v1-8k-vision-preview'
 
 def get_prompt(model):
     for m in MODELS:
@@ -197,7 +196,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
-    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, temperature=0.3, max_tokens=2048 if '-8k' in model else 8192)
+    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
@@ -207,28 +206,31 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             if obj.delta.role != 'assistant':
                 raise ValueError("Role error")
         if obj.delta.content is not None:
-            yield obj.delta.content
+            yield {'type': 'text', 'text': obj.delta.content}
+        if 'reasoning_content' in obj.delta.model_extra and obj.delta.reasoning_content is not None:
+            yield {'type': 'reasoning', 'text': obj.delta.reasoning_content}
         if obj.finish_reason is not None or ('finish_details' in obj.model_extra and obj.finish_details is not None):
             finish_reason = obj.finish_reason
             if 'finish_details' in obj.model_extra and obj.finish_details is not None:
                 assert finish_reason is None
                 finish_reason = obj.finish_details['type']
             if finish_reason == 'length':
-                yield '\n\n[!] Error: Output truncated due to limit'
+                yield {'type': 'error', 'text': '[!] Error: Output truncated due to limit\n'}
             elif finish_reason == 'stop':
                 pass
             elif finish_reason is not None:
                 if obj.finish_reason is not None:
-                    yield f'\n\n[!] Error: finish_reason="{finish_reason}"'
+                    yield {'type': 'error', 'text': f'[!] Error: finish_reason="{finish_reason}"\n'}
                 else:
-                    yield f'\n\n[!] Error: finish_details="{obj.finish_details}"'
+                    yield {'type': 'error', 'text': f'[!] Error: finish_details="{obj.finish_details}"\n'}
             finished = True
+    if not finished:
+        raise ValueError("Incomplete response")
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
     should_be_bot = False
     model = DEFAULT_MODEL
-    has_image = False
     while True:
         key = repr((chat_id, msg_id))
         if key not in db:
@@ -251,7 +253,6 @@ def construct_chat_history(chat_id, msg_id):
                     blob_base64 = base64.b64encode(blob).decode()
                     image_url = 'data:image/jpeg;base64,' + blob_base64
                     new_message.append({'type': 'image_url', 'image_url': {'url': image_url, 'detail': 'high'}})
-                    has_image = True
                 else:
                     raise ValueError('Unknown message type in chat history')
             message = new_message
@@ -263,7 +264,7 @@ def construct_chat_history(chat_id, msg_id):
     if len(messages) % 2 != 1:
         logging.error('First message not from user (chat_id=%r, msg_id=%r)', chat_id, msg_id)
         return None, None
-    return messages[::-1], model, has_image
+    return messages[::-1], model
 
 @only_admin
 async def add_whitelist_handler(message):
@@ -395,6 +396,18 @@ class BotReplyMessages:
     async def finalize(self):
         await self._force_update(self.text)
 
+def render_reply(reply, info, error, reasoning, is_generating):
+    result = RichText.from_markdown(reply)
+    if reasoning:
+        result = RichText.Quote(reasoning, not is_generating) + '\n' + result
+    if info:
+        result += '\n' + RichText.Quote(info)
+    if error:
+        result += '\n' + RichText.Quote(RichText.Bold(error))
+    if is_generating:
+        result += '\n' + RichText.Italic('[!Generating...]')
+    return result
+
 @only_whitelist
 async def reply_handler(message):
     chat_id = message.chat_id
@@ -487,7 +500,7 @@ async def reply_handler(message):
 
     db[repr((chat_id, msg_id))] = (False, new_message, reply_to_id, None)
 
-    chat_history, model, has_image = construct_chat_history(chat_id, msg_id)
+    chat_history, model = construct_chat_history(chat_id, msg_id)
     if chat_history is None:
         await send_message(chat_id, f"[!] Error: Unable to proceed with this conversation. Potential causes: the message replied to may be incomplete, contain an error, be a system message, or not exist in the database.", msg_id)
         return
@@ -495,25 +508,33 @@ async def reply_handler(message):
     models = models if models is not None else [model]
     async with asyncio.TaskGroup() as tg:
         for task_id, m in enumerate(models):
-            if has_image and 'vision' not in m:
-                m = VISION_MODEL
             tg.create_task(process_request(chat_id, msg_id, chat_history, m, task_id))
 
 async def process_request(chat_id, msg_id, chat_history, model, task_id):
     error_cnt = 0
     while True:
         reply = ''
+        info = ''
+        error = ''
+        reasoning = ''
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
                 stream = completion(chat_history, model, chat_id, msg_id, task_id)
                 first_update_timestamp = None
                 async for delta in stream:
-                    reply += delta
+                    if delta['type'] == 'text':
+                        reply += delta['text']
+                    elif delta['type'] == 'error':
+                        error += delta['text']
+                    elif delta['type'] == 'info':
+                        info += delta['text']
+                    elif delta['type'] == 'reasoning':
+                        reasoning += delta['text']
                     if first_update_timestamp is None:
                         first_update_timestamp = time.time()
                     if time.time() >= first_update_timestamp + FIRST_BATCH_DELAY:
-                        await replymsgs.update(RichText.from_markdown(reply) + ' [!Generating...]')
-                await replymsgs.update(RichText.from_markdown(reply))
+                        await replymsgs.update(render_reply(reply, info, error, reasoning, True))
+                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 await replymsgs.finalize()
                 for message_id, _ in replymsgs.replied_msgs:
                     db[repr((chat_id, message_id))] = (True, reply, msg_id, model)
@@ -522,12 +543,10 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                 error_cnt += 1
                 logging.exception('Error (chat_id=%r, msg_id=%r, model=%r, task_id=%r, cnt=%r): %s', chat_id, msg_id, model, task_id, error_cnt, e)
                 will_retry = not isinstance (e, openai.BadRequestError) and error_cnt <= OPENAI_MAX_RETRY
-                error_msg = f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}'
+                error += f'[!] Error: {traceback.format_exception_only(e)[-1].strip()}\n'
                 if will_retry:
-                    error_msg += f'\nRetrying ({error_cnt}/{OPENAI_MAX_RETRY})...'
-                if reply:
-                    error_msg = reply + '\n\n' + error_msg
-                await replymsgs.update(error_msg)
+                    error += f'Retrying ({error_cnt}/{OPENAI_MAX_RETRY})...\n'
+                await replymsgs.update(render_reply(reply, info, error, reasoning, False))
                 if will_retry:
                     await asyncio.sleep(OPENAI_RETRY_INTERVAL)
                 if not will_retry:
