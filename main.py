@@ -24,23 +24,19 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'z$', 'model': 'glm-4.5', 'prompt_template': ''},
+    {'prefix': 'z$', 'model': 'glm-4.7', 'prompt_template': ''},
+    {'prefix': 'z46$', 'model': 'glm-4.6', 'prompt_template': ''},
+    {'prefix': 'z45$', 'model': 'glm-4.5', 'prompt_template': ''},
     {'prefix': 'z4$', 'model': 'glm-4-plus', 'prompt_template': ''},
-    {'prefix': 'z-$', 'model': 'glm-4-plus disable_search', 'prompt_template': ''},
     {'prefix': 'zz$', 'model': 'glm-zero-preview', 'prompt_template': ''},
     {'prefix': 'glm-4-0520$', 'model': 'glm-4-0520', 'prompt_template': ''},
-    {'prefix': 'glm-4-0520-$', 'model': 'glm-4-0520 disable_search', 'prompt_template': ''},
     {'prefix': 'glm-4$', 'model': 'glm-4', 'prompt_template': ''},
-    {'prefix': 'glm-4-$', 'model': 'glm-4 disable_search', 'prompt_template': ''},
     {'prefix': 'glm-4-air$', 'model': 'glm-4-air', 'prompt_template': ''},
-    {'prefix': 'glm-4-air-$', 'model': 'glm-4-air disable_search', 'prompt_template': ''},
     {'prefix': 'glm-4-airx$', 'model': 'glm-4-airx', 'prompt_template': ''},
-    {'prefix': 'glm-4-airx-$', 'model': 'glm-4-airx disable_search', 'prompt_template': ''},
     {'prefix': 'glm-4-flash$', 'model': 'glm-4-flash', 'prompt_template': ''},
-    {'prefix': 'glm-4-flash-$', 'model': 'glm-4-flash disable_search', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'glm-4' # For compatibility with the old database format
-VISION_MODEL = 'glm-4.1v-thinking-flashx'
+VISION_MODEL = 'glm-4.6v'
 
 def get_prompt(model):
     if model == VISION_MODEL:
@@ -90,22 +86,16 @@ class ZhipuAI:
             'Content-Type': 'application/json',
             'Authorization': self.generate_token(1000),
         }
-        disable_search = False
-        if model.endswith(' disable_search'):
-            model = model[:-len(' disable_search')]
-            disable_search = True
         payload = {
             'model': model,
             'messages': messages,
             'stream': True,
-            'tools': [{'type': 'web_search', 'web_search': {'enable': not disable_search}}],
+            'tools': [{'type': 'web_search', 'web_search': {'enable': False}}],
         }
-        if model == 'glm-4.5':
+        if model in ['glm-4.5', 'glm-4.6', 'glm-4.7', 'glm-4.6v']:
             payload['thinking'] = {
                 "type": "enabled",
             }
-        if model != VISION_MODEL:
-            payload['max_tokens'] = 8192
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 "https://open.bigmodel.cn/api/paas/v4/chat/completions",
