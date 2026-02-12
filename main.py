@@ -24,7 +24,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'z$', 'model': 'glm-4.7', 'prompt_template': ''},
+    {'prefix': 'z$', 'model': 'glm-5', 'prompt_template': ''},
+    {'prefix': 'z47$', 'model': 'glm-4.7', 'prompt_template': ''},
     {'prefix': 'z46$', 'model': 'glm-4.6', 'prompt_template': ''},
     {'prefix': 'z45$', 'model': 'glm-4.5', 'prompt_template': ''},
     {'prefix': 'z4$', 'model': 'glm-4-plus', 'prompt_template': ''},
@@ -92,7 +93,7 @@ class ZhipuAI:
             'stream': True,
             'tools': [{'type': 'web_search', 'web_search': {'enable': False}}],
         }
-        if model in ['glm-4.5', 'glm-4.6', 'glm-4.7', 'glm-4.6v']:
+        if model in ['glm-4.5', 'glm-4.6', 'glm-4.7', 'glm-4.6v', 'glm-5']:
             payload['thinking'] = {
                 "type": "enabled",
             }
