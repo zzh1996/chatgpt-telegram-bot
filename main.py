@@ -97,7 +97,7 @@ class ZhipuAI:
             payload['thinking'] = {
                 "type": "enabled",
             }
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=1800)) as session:
             async with session.post(
                 "https://open.bigmodel.cn/api/paas/v4/chat/completions",
                 headers=headers,
