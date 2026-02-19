@@ -24,16 +24,15 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 'c$', 'model': 'claude-opus-4-6', 'prompt_template': ''},
-    {'prefix': 'c45o$', 'model': 'claude-opus-4-5-20251101', 'prompt_template': ''},
+    {'prefix': 'c45$', 'model': 'claude-opus-4-5-20251101', 'prompt_template': ''},
     {'prefix': 'c45s$', 'model': 'claude-sonnet-4-5-20250929', 'prompt_template': ''},
     {'prefix': 'c41$', 'model': 'claude-opus-4-1-20250805', 'prompt_template': ''},
     {'prefix': 'c4$', 'model': 'claude-4-opus-20250514', 'prompt_template': ''},
-    {'prefix': 'cs$', 'model': 'claude-4-sonnet-20250514', 'prompt_template': ''},
-    {'prefix': 'ct$', 'model': 'claude-opus-4-5-20251101 thinking', 'prompt_template': ''},
+    {'prefix': 'cs$', 'model': 'claude-sonnet-4-6', 'prompt_template': ''},
+    {'prefix': 'c45t$', 'model': 'claude-opus-4-5-20251101 thinking', 'prompt_template': ''},
     {'prefix': 'c45st$', 'model': 'claude-sonnet-4-5-20250929 thinking', 'prompt_template': ''},
     {'prefix': 'c41t$', 'model': 'claude-opus-4-1-20250805 thinking', 'prompt_template': ''},
     {'prefix': 'c4t$', 'model': 'claude-4-opus-20250514 thinking', 'prompt_template': ''},
-    {'prefix': 'cst$', 'model': 'claude-4-sonnet-20250514 thinking', 'prompt_template': ''},
     {'prefix': 'c37s$', 'model': 'claude-3-7-sonnet-20250219', 'prompt_template': ''},
     {'prefix': 'c37t$', 'model': 'claude-3-7-sonnet-20250219 thinking', 'prompt_template': ''},
     {'prefix': 'c35s$', 'model': 'claude-3-5-sonnet-20241022', 'prompt_template': ''},
@@ -48,6 +47,7 @@ DEFAULT_MODEL = 'claude-3-opus-20240229' # For compatibility with the old databa
 PRICING = {
     'claude-opus-4-6': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
     'claude-opus-4-5-20251101': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
+    'claude-sonnet-4-6': (3e-6, 15e-6, 3.75e-6, 0.3e-6),
     'claude-sonnet-4-5-20250929': (3e-6, 15e-6, 3.75e-6, 0.3e-6),
     'claude-opus-4-1-20250805': (15e-6, 75e-6, 18.75e-6, 1.5e-6),
     'claude-4-opus-20250514': (15e-6, 75e-6, 18.75e-6, 1.5e-6),
@@ -57,6 +57,7 @@ PRICING = {
 
 MODEL_MAX_TOKENS = {
     'claude-opus-4-6': 128000,
+    'claude-sonnet-4-6': 64000,
     'claude-opus-4-5-20251101': 64000,
     'claude-sonnet-4-5-20250929': 64000,
     'claude-opus-4-1-20250805': 32000,
@@ -73,6 +74,7 @@ MODEL_MAX_TOKENS = {
 
 MODEL_THINKING_MAX_TOKENS = {
     'claude-opus-4-6': 128000,
+    'claude-sonnet-4-6': 64000,
     'claude-opus-4-5-20251101': 64000,
     'claude-sonnet-4-5-20250929': 64000,
     'claude-opus-4-1-20250805': 32000,
@@ -282,7 +284,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['source']['data'] = obj['source']['data'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_blobs(messages))
-    if model == 'claude-opus-4-6':
+    if model in ['claude-opus-4-6', 'claude-sonnet-4-6']:
         stream = await aclient.messages.create(
             model=model,
             messages=messages,
