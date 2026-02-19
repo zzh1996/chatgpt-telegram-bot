@@ -93,7 +93,7 @@ DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old databas
 def PRICING(model, input_tokens, output_tokens, input_audio_tokens, output_image_tokens):
     if model == 'gemini-3-pro-image-preview':
         return 2e-6 * input_tokens + 12e-6 * (output_tokens - output_image_tokens) + 120e-6 * output_image_tokens
-    elif model.startswith('gemini-3-pro'):
+    elif model.startswith('gemini-3-pro') or model.startswith('gemini-3.1-pro'):
         if input_tokens <= 200_000: # exact conditions is not sure
             return 2e-6 * input_tokens + 12e-6 * output_tokens
         else:
@@ -444,6 +444,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         'gemini-2.5-flash-lite-preview-06-17',
         'gemini-3-pro-preview',
         'gemini-3-flash-preview',
+        'gemini-3.1-pro-preview',
     ]
     is_image_generation_model = model in [
         'gemini-3-pro-image-preview',
