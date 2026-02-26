@@ -954,7 +954,7 @@ class LazyRenderReply:
         result = RichTextParts()
         for part in self.reasoning:
             if part['type'] == 'text':
-                result += RichText.Quote(part['text'].strip() + '\n', not self.is_generating)
+                result += RichText.Quote(part['text'].strip() + '\n\n', not self.is_generating)
             elif part['type'] == 'image':
                 result += RichTextParts.Image(part['hash'])
             else:
