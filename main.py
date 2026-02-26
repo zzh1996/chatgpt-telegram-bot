@@ -38,7 +38,8 @@ MODELS = [
     {'prefix': 'g1$', 'model': 'gemini-1.0-pro-latest', 'vision_model': 'gemini-pro-vision'},
     {'prefix': 'gt$', 'model': 'gemini-2.0-flash-thinking-exp-01-21'},
     {'prefix': 'ge$', 'model': 'gemma-3-27b-it'},
-    {'prefix': 'gi$', 'model': 'gemini-3-pro-image-preview'},
+    {'prefix': 'gi$', 'model': 'gemini-3.1-flash-image-preview'},
+    {'prefix': 'gi3$', 'model': 'gemini-3-pro-image-preview'},
     {'prefix': 'gi25$', 'model': 'gemini-2.5-flash-image-preview'},
     {'prefix': 'gi2$', 'model': 'gemini-2.0-flash-exp-image-generation'},
 
@@ -91,6 +92,8 @@ MODELS = [
 DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
 
 def PRICING(model, input_tokens, output_tokens, input_audio_tokens, output_image_tokens):
+    if model == 'gemini-3.1-flash-image-preview':
+        return 0.25e-6 * input_tokens + 1.5e-6 * (output_tokens - output_image_tokens) + 60e-6 * output_image_tokens
     if model == 'gemini-3-pro-image-preview':
         return 2e-6 * input_tokens + 12e-6 * (output_tokens - output_image_tokens) + 120e-6 * output_image_tokens
     elif model.startswith('gemini-3-pro') or model.startswith('gemini-3.1-pro'):
@@ -445,11 +448,13 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         'gemini-3-pro-preview',
         'gemini-3-flash-preview',
         'gemini-3.1-pro-preview',
+        'gemini-3.1-flash-image-preview',
     ]
     is_image_generation_model = model in [
-        'gemini-3-pro-image-preview',
         'gemini-2.0-flash-exp-image-generation',
-        'gemini-2.5-flash-image-preview'
+        'gemini-2.5-flash-image-preview',
+        'gemini-3-pro-image-preview',
+        'gemini-3.1-flash-image-preview',
     ]
 
     config=gtypes.GenerateContentConfig(
@@ -469,7 +474,8 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 include_thoughts=True,
                 thinking_level='high',
             )
-            config.media_resolution = gtypes.MediaResolution.MEDIA_RESOLUTION_HIGH
+            if not is_image_generation_model:
+                config.media_resolution = gtypes.MediaResolution.MEDIA_RESOLUTION_HIGH
         else:
             config.thinking_config = gtypes.ThinkingConfig(
                 include_thoughts=True,
@@ -561,7 +567,10 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                         assert part.function_call is None
                         assert part.function_response is None
                         if part.inline_data is not None:
-                            yield {'type': 'image', 'data': part.inline_data.data}
+                            if part.thought is not None and part.thought:
+                                yield {'type': 'reasoning_image', 'data': part.inline_data.data}
+                            else:
+                                yield {'type': 'image', 'data': part.inline_data.data}
                         if part.thought_signature is not None:
                             yield {'type': 'thought_signature', 'data': part.thought_signature}
             # assert obj.citation_metadata is None # TODO: show citations when uploading file
@@ -986,6 +995,9 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                     elif delta['type'] == 'image':
                         photo_hash = save_photo(delta['data'])
                         reply.append({'type': 'image', 'hash': photo_hash})
+                    elif delta['type'] == 'reasoning_image':
+                        photo_hash = save_photo(delta['data'])
+                        reasoning += f'\n[Image: {photo_hash}]\n'
                     elif delta['type'] == 'error':
                         error += delta['text']
                     elif delta['type'] == 'info':
