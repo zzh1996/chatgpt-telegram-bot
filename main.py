@@ -952,6 +952,13 @@ class LazyRenderReply:
 
     def render(self):
         result = RichTextParts()
+        for part in self.reasoning:
+            if part['type'] == 'text':
+                result += RichText.Quote(part['text'].strip() + '\n', not self.is_generating)
+            elif part['type'] == 'image':
+                result += RichTextParts.Image(part['hash'])
+            else:
+                raise ValueError(f"Unknown type: {part['type']}")
         for part in self.reply:
             if part['type'] == 'text':
                 result += RichText.from_markdown(part['text'])
@@ -961,8 +968,6 @@ class LazyRenderReply:
                 pass
             else:
                 raise ValueError(f"Unknown type: {part['type']}")
-        if self.reasoning:
-            result = RichText.Quote(self.reasoning.strip(), not self.is_generating) + '\n' + result
         if self.info:
             result += '\n' + RichText.Quote(self.info)
         if self.error:
@@ -977,7 +982,7 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
         reply = []
         info = ''
         error = ''
-        reasoning = ''
+        reasoning = []
         async with BotReplyMessages(chat_id, msg_id, f'[{model}] ') as replymsgs:
             try:
                 replymsgs.update(LazyRenderReply(reply, info, error, reasoning, True))
@@ -997,13 +1002,13 @@ async def process_request(chat_id, msg_id, chat_history, model, task_id):
                         reply.append({'type': 'image', 'hash': photo_hash})
                     elif delta['type'] == 'reasoning_image':
                         photo_hash = save_photo(delta['data'])
-                        reasoning += f'\n[Image: {photo_hash}]\n'
+                        reasoning.append({'type': 'image', 'hash': photo_hash})
                     elif delta['type'] == 'error':
                         error += delta['text']
                     elif delta['type'] == 'info':
                         info = delta['text']
                     elif delta['type'] == 'reasoning':
-                        reasoning += delta['text']
+                        reasoning.append({'type': 'text', 'text': delta['text']})
                     elif delta['type'] == 'thought_signature':
                         blob_hash = save_blob(delta['data'])
                         reply.append({'type': 'thought_signature', 'hash': blob_hash})
