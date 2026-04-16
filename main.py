@@ -23,7 +23,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'c$', 'model': 'claude-opus-4-6', 'prompt_template': ''},
+    {'prefix': 'c$', 'model': 'claude-opus-4-7', 'prompt_template': ''},
+    {'prefix': 'c46$', 'model': 'claude-opus-4-6', 'prompt_template': ''},
     {'prefix': 'c45$', 'model': 'claude-opus-4-5-20251101', 'prompt_template': ''},
     {'prefix': 'c45s$', 'model': 'claude-sonnet-4-5-20250929', 'prompt_template': ''},
     {'prefix': 'c41$', 'model': 'claude-opus-4-1-20250805', 'prompt_template': ''},
@@ -45,6 +46,7 @@ MODELS = [
 DEFAULT_MODEL = 'claude-3-opus-20240229' # For compatibility with the old database format
 
 PRICING = {
+    'claude-opus-4-7': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
     'claude-opus-4-6': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
     'claude-opus-4-5-20251101': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
     'claude-sonnet-4-6': (3e-6, 15e-6, 3.75e-6, 0.3e-6),
@@ -56,6 +58,7 @@ PRICING = {
 }
 
 MODEL_MAX_TOKENS = {
+    'claude-opus-4-7': 128000,
     'claude-opus-4-6': 128000,
     'claude-sonnet-4-6': 64000,
     'claude-opus-4-5-20251101': 64000,
@@ -73,6 +76,7 @@ MODEL_MAX_TOKENS = {
 }
 
 MODEL_THINKING_MAX_TOKENS = {
+    'claude-opus-4-7': 128000,
     'claude-opus-4-6': 128000,
     'claude-sonnet-4-6': 64000,
     'claude-opus-4-5-20251101': 64000,
@@ -292,6 +296,20 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             max_tokens=MODEL_THINKING_MAX_TOKENS[model],
             thinking={
                 "type": "adaptive",
+            },
+            output_config={
+                "effort": "max",
+            },
+        )
+    elif model in ['claude-opus-4-7']:
+        stream = await aclient.messages.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            max_tokens=MODEL_THINKING_MAX_TOKENS[model],
+            thinking={
+                "type": "adaptive",
+                "display": "summarized",
             },
             output_config={
                 "effort": "max",
