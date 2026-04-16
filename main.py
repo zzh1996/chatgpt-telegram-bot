@@ -678,6 +678,8 @@ async def completion(chat_history, model, chat_id, msg_id, task_id, safety_ident
                 yield {'type': 'reasoning_delimiter'}
             elif response.type == 'keepalive':
                 pass
+            elif response.type == 'response.rate_limits.updated':
+                pass
             else:
                 raise ValueError(f"Unknown response type: {response.type}")
 
