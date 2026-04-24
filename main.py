@@ -22,11 +22,10 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'd$', 'model': 'deepseek-chat', 'prompt_template': ''},
-    {'prefix': 'dc$', 'model': 'deepseek-coder', 'prompt_template': ''},
-    {'prefix': 'dr$', 'model': 'deepseek-reasoner', 'prompt_template': ''},
+    {'prefix': 'd$', 'model': 'deepseek-v4-pro', 'prompt_template': ''},
+    {'prefix': 'df$', 'model': 'deepseek-v4-flash', 'prompt_template': ''},
 ]
-DEFAULT_MODEL = 'deepseek-chat' # For compatibility with the old database format
+DEFAULT_MODEL = 'deepseek-v4-pro' # For compatibility with the old database format
 
 def get_prompt(model):
     for m in MODELS:
@@ -191,7 +190,13 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                             obj['image_url']['url'] = obj['image_url']['url'][:50] + '...'
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, remove_image(messages))
-    stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True)
+    stream = await aclient.chat.completions.create(
+        model=model,
+        messages=messages,
+        stream=True,
+        reasoning_effort="max",
+        extra_body={"thinking": {"type": "enabled"}},
+    )
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
