@@ -24,7 +24,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'z$', 'model': 'glm-5', 'prompt_template': ''},
+    {'prefix': 'z$', 'model': 'glm-5.1', 'prompt_template': ''},
+    {'prefix': 'z5$', 'model': 'glm-5', 'prompt_template': ''},
     {'prefix': 'z47$', 'model': 'glm-4.7', 'prompt_template': ''},
     {'prefix': 'z46$', 'model': 'glm-4.6', 'prompt_template': ''},
     {'prefix': 'z45$', 'model': 'glm-4.5', 'prompt_template': ''},
@@ -37,7 +38,7 @@ MODELS = [
     {'prefix': 'glm-4-flash$', 'model': 'glm-4-flash', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'glm-4' # For compatibility with the old database format
-VISION_MODEL = 'glm-4.6v'
+VISION_MODEL = 'glm-5v-turbo'
 
 def get_prompt(model):
     if model == VISION_MODEL:
@@ -93,7 +94,7 @@ class ZhipuAI:
             'stream': True,
             'tools': [{'type': 'web_search', 'web_search': {'enable': False}}],
         }
-        if model in ['glm-4.5', 'glm-4.6', 'glm-4.7', 'glm-4.6v', 'glm-5']:
+        if model in ['glm-4.5', 'glm-4.6', 'glm-4.7', 'glm-4.6v', 'glm-5', 'glm-5.1', 'glm-5v-turbo']:
             payload['thinking'] = {
                 "type": "enabled",
             }
