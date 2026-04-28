@@ -22,7 +22,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'm$', 'model': 'kimi-k2.5', 'prompt_template': ''},
+    {'prefix': 'k$', 'model': 'kimi-k2.6', 'prompt_template': ''},
+    {'prefix': 'k25$', 'model': 'kimi-k2.5', 'prompt_template': ''},
     {'prefix': 'k2$', 'model': 'kimi-k2-0711-preview', 'prompt_template': ''},
     {'prefix': 'moonshot-v1-8k$', 'model': 'moonshot-v1-8k', 'prompt_template': ''},
     {'prefix': 'moonshot-v1-32k$', 'model': 'moonshot-v1-32k', 'prompt_template': ''},
