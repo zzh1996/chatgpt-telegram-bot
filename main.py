@@ -28,6 +28,7 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 'g$', 'model': 'gemini-3.1-pro-preview'},
+    {'prefix': 'g35f$', 'model': 'gemini-3.5-flash'},
     {'prefix': 'g3$', 'model': 'gemini-3-pro-preview'},
     {'prefix': 'g25$', 'model': 'gemini-2.5-pro'},
     {'prefix': 'gf$', 'model': 'gemini-3-flash-preview'},
@@ -92,6 +93,8 @@ MODELS = [
 DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
 
 def PRICING(model, input_tokens, output_tokens, input_audio_tokens, output_image_tokens):
+    if model == 'gemini-3.5-flash':
+        return 1.5e-6 * input_tokens + 9e-6 * output_tokens
     if model == 'gemini-3.1-flash-image-preview':
         return 0.25e-6 * input_tokens + 1.5e-6 * (output_tokens - output_image_tokens) + 60e-6 * output_image_tokens
     if model == 'gemini-3-pro-image-preview':
@@ -449,6 +452,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         'gemini-3-flash-preview',
         'gemini-3.1-pro-preview',
         'gemini-3.1-flash-image-preview',
+        'gemini-3.5-flash',
     ]
     is_image_generation_model = model in [
         'gemini-2.0-flash-exp-image-generation',
