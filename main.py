@@ -22,7 +22,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'q$', 'model': 'qwen3.6-max-preview', 'prompt_template': ''},
+    {'prefix': 'q$', 'model': 'qwen3.7-max', 'prompt_template': ''},
+    {'prefix': 'q36$', 'model': 'qwen3.6-max-preview', 'prompt_template': ''},
     {'prefix': 'qp$', 'model': 'qwen3.6-plus', 'prompt_template': ''},
     {'prefix': 'qf$', 'model': 'qwen3.6-flash', 'prompt_template': ''},
 
@@ -248,7 +249,9 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     finished = False
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
-        assert not finished
+        if finished:
+            assert len(response.choices) == 0
+            continue
         obj = response.choices[0]
         if obj.delta.role is not None:
             if obj.delta.role != 'assistant':
