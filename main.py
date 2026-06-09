@@ -23,7 +23,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'c$', 'model': 'claude-opus-4-8', 'prompt_template': ''},
+    {'prefix': 'c$', 'model': 'claude-fable-5', 'prompt_template': ''},
+    {'prefix': 'c48$', 'model': 'claude-opus-4-8', 'prompt_template': ''},
     {'prefix': 'c47$', 'model': 'claude-opus-4-7', 'prompt_template': ''},
     {'prefix': 'c46$', 'model': 'claude-opus-4-6', 'prompt_template': ''},
     {'prefix': 'c45$', 'model': 'claude-opus-4-5-20251101', 'prompt_template': ''},
@@ -47,6 +48,7 @@ MODELS = [
 DEFAULT_MODEL = 'claude-3-opus-20240229' # For compatibility with the old database format
 
 PRICING = {
+    'claude-fable-5': (10e-6, 50e-6, 12.5e-6, 1e-6),
     'claude-opus-4-8': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
     'claude-opus-4-7': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
     'claude-opus-4-6': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
@@ -60,6 +62,7 @@ PRICING = {
 }
 
 MODEL_MAX_TOKENS = {
+    'claude-fable-5': 128000,
     'claude-opus-4-8': 128000,
     'claude-opus-4-7': 128000,
     'claude-opus-4-6': 128000,
@@ -79,6 +82,7 @@ MODEL_MAX_TOKENS = {
 }
 
 MODEL_THINKING_MAX_TOKENS = {
+    'claude-fable-5': 128000,
     'claude-opus-4-8': 128000,
     'claude-opus-4-7': 128000,
     'claude-opus-4-6': 128000,
@@ -305,7 +309,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 "effort": "max",
             },
         )
-    elif model in ['claude-opus-4-7', 'claude-opus-4-8']:
+    elif model in ['claude-opus-4-7', 'claude-opus-4-8', 'claude-fable-5']:
         stream = await aclient.messages.create(
             model=model,
             messages=messages,
@@ -396,8 +400,10 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             if stop_reason is not None:
                 if stop_reason == 'end_turn':
                     pass
-                else:
+                elif 'stop_details' not in event.delta.model_extra or event.delta.stop_details is None:
                     yield {'type': 'error', 'text': f'[!] Error: stop_reason="{stop_reason}"'}
+                else:
+                    yield {'type': 'error', 'text': f'[!] Error: stop_reason="{stop_reason}", stop_details="{event.delta.stop_details}"'}
 
 def construct_chat_history(chat_id, msg_id):
     messages = []
