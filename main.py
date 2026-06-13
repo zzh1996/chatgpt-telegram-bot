@@ -23,7 +23,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'c$', 'model': 'claude-fable-5', 'prompt_template': ''},
+    {'prefix': 'c$', 'model': 'claude-opus-4-8', 'prompt_template': ''},
+    {'prefix': 'cf$', 'model': 'claude-fable-5', 'prompt_template': ''},
     {'prefix': 'c48$', 'model': 'claude-opus-4-8', 'prompt_template': ''},
     {'prefix': 'c47$', 'model': 'claude-opus-4-7', 'prompt_template': ''},
     {'prefix': 'c46$', 'model': 'claude-opus-4-6', 'prompt_template': ''},
