@@ -25,7 +25,7 @@ MODELS = [
     {'prefix': 'dbe$', 'model': 'doubao-seed-evolving', 'prompt_template': ''},
     {'prefix': 'db$', 'model': 'doubao-seed-2-1-pro-260628', 'prompt_template': ''},
     {'prefix': 'dbt$', 'model': 'doubao-seed-2-1-turbo-260628', 'prompt_template': ''},
-    {'prefix': 'db2$', 'model': 'doubao-seed-2-0-pro-260628', 'prompt_template': ''},
+    {'prefix': 'db2$', 'model': 'doubao-seed-2-0-pro-260215', 'prompt_template': ''},
     {'prefix': 'db2l$', 'model': 'doubao-seed-2-0-lite-260215', 'prompt_template': ''},
     {'prefix': 'db2m$', 'model': 'doubao-seed-2-0-mini-260215', 'prompt_template': ''},
     {'prefix': 'db18$', 'model': 'doubao-seed-1-8-251228', 'prompt_template': ''},
