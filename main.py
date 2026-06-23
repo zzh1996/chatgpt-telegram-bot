@@ -50,7 +50,7 @@ aclient = openai.AsyncOpenAI(
     api_key=os.getenv("ARK_API_KEY"),
     base_url="https://ark.cn-beijing.volces.com/api/v3",
     max_retries=0,
-    timeout=15,
+    timeout=60,
 )
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
