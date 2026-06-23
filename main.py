@@ -22,9 +22,11 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'db$', 'model': 'doubao-seed-2-0-pro-260215', 'prompt_template': ''},
-    {'prefix': 'dbl$', 'model': 'doubao-seed-2-0-lite-260215', 'prompt_template': ''},
-    {'prefix': 'dbm$', 'model': 'doubao-seed-2-0-mini-260215', 'prompt_template': ''},
+    {'prefix': 'dbe$', 'model': 'doubao-seed-evolving', 'prompt_template': ''},
+    {'prefix': 'db$', 'model': 'doubao-seed-2-1-pro-260628', 'prompt_template': ''},
+    {'prefix': 'dbt$', 'model': 'doubao-seed-2-1-turbo-260628', 'prompt_template': ''},
+    {'prefix': 'db2l$', 'model': 'doubao-seed-2-0-lite-260215', 'prompt_template': ''},
+    {'prefix': 'db2m$', 'model': 'doubao-seed-2-0-mini-260215', 'prompt_template': ''},
     {'prefix': 'db18$', 'model': 'doubao-seed-1-8-251228', 'prompt_template': ''},
     {'prefix': 'db16$', 'model': 'doubao-seed-1-6-250615', 'prompt_template': ''},
     {'prefix': 'db16t$', 'model': 'doubao-seed-1-6-thinking-250715', 'prompt_template': ''},
@@ -201,7 +203,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         return new_messages
     logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r): %s', chat_id, msg_id, task_id, model, remove_image(messages))
     kwargs = {}
-    if model == 'doubao-seed-1-8-251228' or model.startswith('doubao-seed-2'):
+    if model == 'doubao-seed-1-8-251228' or model.startswith('doubao-seed-2') or model == 'doubao-seed-evolving':
         kwargs['reasoning_effort'] = 'high'
     stream = await aclient.chat.completions.create(model=model, messages=messages, stream=True, **kwargs)
     finished = False
