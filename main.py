@@ -32,6 +32,10 @@ GPT_4O_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, base
 MODELS = [
     {'prefix': '$', 'model': 'chat-latest', 'prompt_template': ''},
 
+    {'prefix': '56$', 'model': 'gpt-5.6-sol', 'prompt_template': ''},
+    {'prefix': '56t$', 'model': 'gpt-5.6-terra', 'prompt_template': ''},
+    {'prefix': '56l$', 'model': 'gpt-5.6-luna', 'prompt_template': ''},
+
     {'prefix': '55$', 'model': 'gpt-5.5-2026-04-23', 'prompt_template': ''},
 
     {'prefix': '54$', 'model': 'gpt-5.4-2026-03-05', 'prompt_template': ''},
@@ -188,6 +192,10 @@ PRICING = {
     'gpt-5.4-nano-2026-03-17': (0.2, 1.25, 0.02, True),
 
     'gpt-5.5-2026-04-23': (5, 30, 0.5, True),
+
+    'gpt-5.6-sol': (5, 30, 0.5, True),
+    'gpt-5.6-terra': (2.5, 15, 0.25, True),
+    'gpt-5.6-luna': (1, 6, 0.1, True),
 
     'chat-latest': (5, 30, 0.5, False),
 }
@@ -491,10 +499,11 @@ async def completion(chat_history, model, chat_id, msg_id, task_id, safety_ident
 
     is_reasoning_model = model.startswith('o') or model.startswith('gpt-5') or model == 'chat-latest'
     support_stream = True # As of 2025-02-14, o1 supports streaming
-    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06', 'gpt-5.1-2025-11-13', 'gpt-5.2-2025-12-11', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.4-nano-2026-03-17', 'gpt-5.5-2026-04-23']
+    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06', 'gpt-5.1-2025-11-13', 'gpt-5.2-2025-12-11', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.4-nano-2026-03-17', 'gpt-5.5-2026-04-23', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']
     support_reasoning_effort_xhigh = model in ['gpt-5.2-2025-12-11', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.4-nano-2026-03-17', 'gpt-5.5-2026-04-23']
-    support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06', 'gpt-5.1-2025-11-13', 'gpt-5.1-chat-latest', 'gpt-5.2-2025-12-11', 'gpt-5.2-chat-latest', 'gpt-5.2-pro-2025-12-11', 'gpt-5.3-chat-latest', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.4-nano-2026-03-17', 'gpt-5.5-2026-04-23', 'chat-latest']
-    support_priority = model in ['gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5.1-2025-11-13', 'gpt-5.2-2025-12-11', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.5-2026-04-23']
+    support_reasoning_effort_max = model in ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']
+    support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06', 'gpt-5.1-2025-11-13', 'gpt-5.1-chat-latest', 'gpt-5.2-2025-12-11', 'gpt-5.2-chat-latest', 'gpt-5.2-pro-2025-12-11', 'gpt-5.3-chat-latest', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.4-nano-2026-03-17', 'gpt-5.5-2026-04-23', 'chat-latest', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']
+    support_priority = model in ['gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5.1-2025-11-13', 'gpt-5.2-2025-12-11', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.5-2026-04-23', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']
     is_search_model = 'search' in model
     is_responses_api = model.startswith('o1-pro') or support_reasoning_summary or model.startswith('gpt-5') or tools
     if not is_responses_api:
@@ -584,7 +593,9 @@ async def completion(chat_history, model, chat_id, msg_id, task_id, safety_ident
         if support_reasoning_effort:
             if 'reasoning' not in kwargs:
                 kwargs['reasoning'] = {}
-            if support_reasoning_effort_xhigh:
+            if support_reasoning_effort_max:
+                kwargs['reasoning']['effort'] = 'max'
+            elif support_reasoning_effort_xhigh:
                 kwargs['reasoning']['effort'] = 'xhigh'
             else:
                 kwargs['reasoning']['effort'] = 'high'
@@ -605,8 +616,8 @@ async def completion(chat_history, model, chat_id, msg_id, task_id, safety_ident
         if tools_param:
             kwargs['tools'] = tools_param
         kwargs['safety_identifier'] = safety_identifier
-        if support_priority:
-            kwargs['service_tier'] = "priority"
+        # if support_priority:
+        #     kwargs['service_tier'] = "priority"
 
         logging.info('Request (chat_id=%r, msg_id=%r, task_id=%r, model=%r, args=%r): %s', chat_id, msg_id, task_id, model, kwargs, remove_blobs(messages))
         input_, instructions = convert_to_responses_api_input_format(messages)
