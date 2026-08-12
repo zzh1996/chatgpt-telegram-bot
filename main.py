@@ -201,6 +201,22 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     async for response in stream:
         logging.info('Response (chat_id=%r, msg_id=%r, task_id=%r): %s', chat_id, msg_id, task_id, response)
         assert not finished
+        if response.usage is not None:
+            usage_text = f"Prompt tokens: {response.usage.prompt_tokens}\n"
+            cached_prompt_tokens = 0
+            if response.usage.prompt_tokens_details is not None:
+                if response.usage.prompt_tokens_details.cached_tokens is not None:
+                    if response.usage.prompt_tokens_details.cached_tokens > 0:
+                        cached_prompt_tokens = response.usage.prompt_tokens_details.cached_tokens
+                        usage_text += f"Cached prompt tokens: {cached_prompt_tokens}\n"
+            if response.usage.completion_tokens_details is not None:
+                if response.usage.completion_tokens_details.reasoning_tokens is not None:
+                    if response.usage.completion_tokens_details.reasoning_tokens > 0:
+                        usage_text += f"Reasoning tokens: {response.usage.completion_tokens_details.reasoning_tokens}\n"
+            usage_text += f"Completion tokens: {response.usage.completion_tokens}\n"
+            if response.system_fingerprint is not None:
+                usage_text += f"System fingerprint: {response.system_fingerprint}\n"
+            yield {'type': 'info', 'text': usage_text}
         obj = response.choices[0]
         if obj.delta.role is not None:
             if obj.delta.role != 'assistant':
