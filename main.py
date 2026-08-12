@@ -194,8 +194,8 @@ PRICING = {
     'gpt-5.5-2026-04-23': (5, 30, 0.5, True),
 
     'gpt-5.6-sol': (5, 30, 0.5, True),
-    'gpt-5.6-terra': (2.5, 15, 0.25, True),
-    'gpt-5.6-luna': (1, 6, 0.1, True),
+    'gpt-5.6-terra': (2, 12, 0.2, True),
+    'gpt-5.6-luna': (0.2, 1.2, 0.02, True),
 
     'chat-latest': (5, 30, 0.5, False),
 }
