@@ -32,6 +32,8 @@ GPT_4O_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, base
 MODELS = [
     {'prefix': '$', 'model': 'chat-latest', 'prompt_template': ''},
 
+    {'prefix': '6$', 'model': 'gpt-6-astra', 'prompt_template': ''},
+
     {'prefix': '56$', 'model': 'gpt-5.6-sol', 'prompt_template': ''},
     {'prefix': '56t$', 'model': 'gpt-5.6-terra', 'prompt_template': ''},
     {'prefix': '56l$', 'model': 'gpt-5.6-luna', 'prompt_template': ''},
@@ -198,6 +200,8 @@ PRICING = {
     'gpt-5.6-luna': (0.2, 1.2, 0.02, True),
 
     'chat-latest': (5, 30, 0.5, False),
+
+    'gpt-6-astra': (10, 50, 1, True),
 }
 
 def get_prompt(model):
@@ -497,15 +501,15 @@ async def completion(chat_history, model, chat_id, msg_id, task_id, safety_ident
                 raise ValueError('Unknown role in chat history')
         return new_messages, system_prompt
 
-    is_reasoning_model = model.startswith('o') or model.startswith('gpt-5') or model == 'chat-latest'
+    is_reasoning_model = model.startswith('o') or model.startswith('gpt-5') or model.startswith('gpt-6') or model == 'chat-latest'
     support_stream = True # As of 2025-02-14, o1 supports streaming
-    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06', 'gpt-5.1-2025-11-13', 'gpt-5.2-2025-12-11', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.4-nano-2026-03-17', 'gpt-5.5-2026-04-23', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']
+    support_reasoning_effort = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o1-pro', 'o1-pro-2025-03-19', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06', 'gpt-5.1-2025-11-13', 'gpt-5.2-2025-12-11', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.4-nano-2026-03-17', 'gpt-5.5-2026-04-23', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-6-astra']
     support_reasoning_effort_xhigh = model in ['gpt-5.2-2025-12-11', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.4-nano-2026-03-17', 'gpt-5.5-2026-04-23']
-    support_reasoning_effort_max = model in ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']
-    support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06', 'gpt-5.1-2025-11-13', 'gpt-5.1-chat-latest', 'gpt-5.2-2025-12-11', 'gpt-5.2-chat-latest', 'gpt-5.2-pro-2025-12-11', 'gpt-5.3-chat-latest', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.4-nano-2026-03-17', 'gpt-5.5-2026-04-23', 'chat-latest', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']
-    support_priority = model in ['gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5.1-2025-11-13', 'gpt-5.2-2025-12-11', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.5-2026-04-23', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']
+    support_reasoning_effort_max = model in ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-6-astra']
+    support_reasoning_summary = model in ['o1', 'o1-2024-12-17', 'o3-mini', 'o3-mini-2025-01-31', 'o3', 'o3-2025-04-16', 'o4-mini', 'o4-mini-2025-04-16', 'o3-pro', 'o3-pro-2025-06-10', 'gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06', 'gpt-5.1-2025-11-13', 'gpt-5.1-chat-latest', 'gpt-5.2-2025-12-11', 'gpt-5.2-chat-latest', 'gpt-5.2-pro-2025-12-11', 'gpt-5.3-chat-latest', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.4-nano-2026-03-17', 'gpt-5.5-2026-04-23', 'chat-latest', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-6-astra']
+    support_priority = model in ['gpt-5-2025-08-07', 'gpt-5-mini-2025-08-07', 'gpt-5.1-2025-11-13', 'gpt-5.2-2025-12-11', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini-2026-03-17', 'gpt-5.5-2026-04-23', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-6-astra']
     is_search_model = 'search' in model
-    is_responses_api = model.startswith('o1-pro') or support_reasoning_summary or model.startswith('gpt-5') or tools
+    is_responses_api = model.startswith('o1-pro') or support_reasoning_summary or model.startswith('gpt-5') or model.startswith('gpt-6') or tools
     if not is_responses_api:
         kwargs = {'model': model}
         if support_stream:
