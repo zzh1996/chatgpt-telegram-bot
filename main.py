@@ -23,7 +23,7 @@ ADMIN_ID = 71863318
 
 MODELS = [
     {'prefix': 'd$', 'model': 'deepseek-v4-pro', 'prompt_template': ''},
-    {'prefix': 'df$', 'model': 'deepseek-v4-flash', 'prompt_template': ''},
+    {'prefix': 'df$', 'model': 'deepseek-flash', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'deepseek-v4-pro' # For compatibility with the old database format
 
@@ -475,9 +475,6 @@ async def reply_handler(message):
     photo_message = message if message.photo is not None else extra_photo_message
     photo_hash = None
     if photo_message is not None:
-        await send_message(chat_id, '[!] Error: Images are not supported', msg_id)
-        return
-
         if photo_message.grouped_id is not None:
             await send_message(chat_id, '[!] Error: Grouped photos are not yet supported, but will be supported soon', msg_id)
             return
