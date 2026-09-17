@@ -22,7 +22,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'q$', 'model': 'qwen3.7-max', 'prompt_template': ''},
+    {'prefix': 'q$', 'model': 'qwen3.8-max', 'prompt_template': ''},
+    {'prefix': 'q37$', 'model': 'qwen3.7-max', 'prompt_template': ''},
     {'prefix': 'q36$', 'model': 'qwen3.6-max-preview', 'prompt_template': ''},
     {'prefix': 'qp$', 'model': 'qwen3.6-plus', 'prompt_template': ''},
     {'prefix': 'qf$', 'model': 'qwen3.6-flash', 'prompt_template': ''},
@@ -79,8 +80,8 @@ MODELS = [
     {'prefix': 'qwen1$', 'model': 'qwen-72b-chat', 'prompt_template': ''},
 ]
 DEFAULT_MODEL = 'qwen-max-0428' # For compatibility with the old database format
-VISION_MODEL = 'qwen3.6-plus'
-VISION_REASONING_MODEL = 'qwen3.6-plus'
+VISION_MODEL = 'qwen3.8-max'
+VISION_REASONING_MODEL = 'qwen3.8-max'
 
 def get_prompt(model):
     for m in MODELS:
