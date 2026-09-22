@@ -28,6 +28,7 @@ PROVIDERS = {
     'fireworks': {'base_url': 'https://api.fireworks.ai/inference/v1', 'api_key': os.getenv("FIREWORKS_API_KEY")},
     'openrouter': {'base_url': 'https://openrouter.ai/api/v1', 'api_key': os.getenv("OPENROUTER_API_KEY")},
     'groq': {'base_url': 'https://api.groq.com/openai/v1', 'api_key': os.getenv("GROQ_API_KEY")},
+    'xiaomi': {'base_url': 'https://api.xiaomimimo.com/v1', 'api_key': os.getenv("XIAOMI_API_KEY")},
 }
 
 MODELS = [
@@ -67,6 +68,9 @@ MODELS = [
     {'prefix': 'gk2$', 'model': 'groq/moonshotai/kimi-k2-instruct'},
     {'prefix': 'go$', 'model': 'groq/openai/gpt-oss-120b'},
     {'prefix': 'gom$', 'model': 'groq/openai/gpt-oss-20b'},
+
+    {'prefix': 'mi$', 'model': 'xiaomi/mimo-v2.6-pro'},
+    {'prefix': 'mif$', 'model': 'xiaomi/mimo-v2.6-flash'},
 ]
 
 VISION_MODELS = {
@@ -268,6 +272,8 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             yield {'type': 'text', 'text': obj.delta.content}
         if 'reasoning' in obj.delta.model_extra and obj.delta.reasoning is not None:
             yield {'type': 'reasoning', 'text': obj.delta.reasoning}
+        if 'reasoning_content' in obj.delta.model_extra and obj.delta.reasoning_content is not None:
+            yield {'type': 'reasoning', 'text': obj.delta.reasoning_content}
         if (obj.finish_reason is not None and obj.finish_reason != '') or ('finish_details' in obj.model_extra and obj.finish_details is not None):
             finish_reason = obj.finish_reason
             if 'finish_details' in obj.model_extra and obj.finish_details is not None:
