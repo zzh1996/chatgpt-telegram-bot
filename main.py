@@ -29,6 +29,9 @@ PROVIDERS = {
     'openrouter': {'base_url': 'https://openrouter.ai/api/v1', 'api_key': os.getenv("OPENROUTER_API_KEY")},
     'groq': {'base_url': 'https://api.groq.com/openai/v1', 'api_key': os.getenv("GROQ_API_KEY")},
     'xiaomi': {'base_url': 'https://api.xiaomimimo.com/v1', 'api_key': os.getenv("XIAOMI_API_KEY")},
+
+    # 群友提供
+    'nanogpt': {'base_url': 'https://nano-gpt.com/api/v1', 'api_key': os.getenv("NANOGPT_API_KEY")}
 }
 
 MODELS = [
@@ -71,6 +74,9 @@ MODELS = [
 
     {'prefix': 'mi$', 'model': 'xiaomi/mimo-v2.6-pro'},
     {'prefix': 'mif$', 'model': 'xiaomi/mimo-v2.6-flash'},
+
+    # 群友提供
+    {'prefix': 'zu$', 'model': 'nanogpt/abliteration-ai/abliterated-model-large-v2'}
 ]
 
 VISION_MODELS = {
