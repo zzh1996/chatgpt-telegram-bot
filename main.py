@@ -23,7 +23,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'c$', 'model': 'claude-opus-5', 'prompt_template': ''},
+    {'prefix': 'c$', 'model': 'claude-opus-5-5', 'prompt_template': ''},
+    {'prefix': 'c5$', 'model': 'claude-opus-5', 'prompt_template': ''},
     {'prefix': 'cf$', 'model': 'claude-fable-5-1', 'prompt_template': ''},
     {'prefix': 'cf5$', 'model': 'claude-fable-5', 'prompt_template': ''},
     {'prefix': 'cs$', 'model': 'claude-sonnet-5', 'prompt_template': ''},
@@ -51,6 +52,7 @@ MODELS = [
 DEFAULT_MODEL = 'claude-3-opus-20240229' # For compatibility with the old database format
 
 PRICING = {
+    'claude-opus-5-5': (4e-6, 20e-6, 5e-6, 0.2e-6),
     'claude-opus-5': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
     'claude-sonnet-5': (2e-6, 10e-6, 2.5e-6, 0.2e-6),
     'claude-fable-5': (10e-6, 50e-6, 12.5e-6, 1e-6),
@@ -68,6 +70,7 @@ PRICING = {
 }
 
 MODEL_MAX_TOKENS = {
+    'claude-opus-5-5': 128000,
     'claude-opus-5': 128000,
     'claude-sonnet-5': 128000,
     'claude-fable-5': 128000,
@@ -91,6 +94,7 @@ MODEL_MAX_TOKENS = {
 }
 
 MODEL_THINKING_MAX_TOKENS = {
+    'claude-opus-5-5': 128000,
     'claude-opus-5': 128000,
     'claude-sonnet-5': 128000,
     'claude-fable-5': 128000,
@@ -321,7 +325,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 "effort": "max",
             },
         )
-    elif model in ['claude-opus-4-7', 'claude-opus-4-8', 'claude-fable-5', 'claude-sonnet-5', 'claude-opus-5', 'claude-fable-5-1']:
+    elif model in ['claude-opus-4-7', 'claude-opus-4-8', 'claude-fable-5', 'claude-sonnet-5', 'claude-opus-5', 'claude-fable-5-1', 'claude-opus-5-5']:
         stream = await aclient.messages.create(
             model=model,
             messages=messages,
