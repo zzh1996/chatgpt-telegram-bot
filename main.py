@@ -43,7 +43,8 @@ MODELS = [
     {'prefix': 'g1$', 'model': 'gemini-1.0-pro-latest', 'vision_model': 'gemini-pro-vision'},
     {'prefix': 'gt$', 'model': 'gemini-2.0-flash-thinking-exp-01-21'},
     {'prefix': 'ge$', 'model': 'gemma-3-27b-it'},
-    {'prefix': 'gi$', 'model': 'gemini-3.1-flash-image-preview'},
+    {'prefix': 'gi$', 'model': 'gemini-nano-banana-2.1'},
+    {'prefix': 'gi31$', 'model': 'gemini-3.1-flash-image-preview'},
     {'prefix': 'gi3$', 'model': 'gemini-3-pro-image-preview'},
     {'prefix': 'gi25$', 'model': 'gemini-2.5-flash-image-preview'},
     {'prefix': 'gi2$', 'model': 'gemini-2.0-flash-exp-image-generation'},
@@ -97,6 +98,8 @@ MODELS = [
 DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
 
 def PRICING(model, input_tokens, output_tokens, input_audio_tokens, output_image_tokens):
+    if model == 'gemini-nano-banana-2.1':
+        return 1.5e-6 * input_tokens + 7.5e-6 * (output_tokens - output_image_tokens) + 30e-6 * output_image_tokens
     if model == 'gemini-3.6-flash' or model == 'gemini-3.7-flash' or model == 'gemini-3.8-flash':
         return 0.75e-6 * input_tokens + 3.75e-6 * output_tokens
     if model == 'gemini-3.5-flash':
@@ -462,12 +465,14 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         'gemini-3.6-flash',
         'gemini-3.7-flash',
         'gemini-3.8-flash',
+        'gemini-nano-banana-2.1',
     ]
     is_image_generation_model = model in [
         'gemini-2.0-flash-exp-image-generation',
         'gemini-2.5-flash-image-preview',
         'gemini-3-pro-image-preview',
         'gemini-3.1-flash-image-preview',
+        'gemini-nano-banana-2.1',
     ]
 
     config=gtypes.GenerateContentConfig(
@@ -482,7 +487,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     )
 
     if is_reasoning_model:
-        if model.startswith('gemini-3'):
+        if model.startswith('gemini-3') or model == 'gemini-nano-banana-2.1':
             config.thinking_config = gtypes.ThinkingConfig(
                 include_thoughts=True,
                 thinking_level='high',
@@ -501,7 +506,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
 
     if is_image_generation_model:
         config.response_modalities = ["image", "text"]
-        if model.startswith('gemini-3'):
+        if model.startswith('gemini-3') or model == 'gemini-nano-banana-2.1':
             image_size = '2K'
             aspect_ratio = None
             if '1' in tools:
