@@ -27,7 +27,10 @@ MODELS = [
     {'prefix': 'c5$', 'model': 'claude-opus-5', 'prompt_template': ''},
     {'prefix': 'cf$', 'model': 'claude-fable-5-1', 'prompt_template': ''},
     {'prefix': 'cf5$', 'model': 'claude-fable-5', 'prompt_template': ''},
-    {'prefix': 'cs$', 'model': 'claude-sonnet-5', 'prompt_template': ''},
+    {'prefix': 'cs$', 'model': 'claude-sonnet-5-5', 'prompt_template': ''},
+    {'prefix': 'cs5$', 'model': 'claude-sonnet-5', 'prompt_template': ''},
+    {'prefix': 'ch$', 'model': 'claude-haiku-5-5', 'prompt_template': ''},
+
     {'prefix': 'c48$', 'model': 'claude-opus-4-8', 'prompt_template': ''},
     {'prefix': 'c47$', 'model': 'claude-opus-4-7', 'prompt_template': ''},
     {'prefix': 'c46$', 'model': 'claude-opus-4-6', 'prompt_template': ''},
@@ -57,6 +60,9 @@ PRICING = {
     'claude-sonnet-5': (2e-6, 10e-6, 2.5e-6, 0.2e-6),
     'claude-fable-5': (10e-6, 50e-6, 12.5e-6, 1e-6),
     'claude-fable-5-1': (10e-6, 50e-6, 12.5e-6, 0.25e-6),
+    'claude-sonnet-5-5': (2e-6, 10e-6, 2.5e-6, 0.1e-6),
+    'claude-haiku-5-5': (0.1e-6, 0.5e-6, 0.125e-6, 0.01e-6),
+
     'claude-opus-4-8': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
     'claude-opus-4-7': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
     'claude-opus-4-6': (5e-6, 25e-6, 6.25e-6, 0.5e-6),
@@ -70,14 +76,6 @@ PRICING = {
 }
 
 MODEL_MAX_TOKENS = {
-    'claude-opus-5-5': 128000,
-    'claude-opus-5': 128000,
-    'claude-sonnet-5': 128000,
-    'claude-fable-5': 128000,
-    'claude-fable-5-1': 128000,
-    'claude-opus-4-8': 128000,
-    'claude-opus-4-7': 128000,
-    'claude-opus-4-6': 128000,
     'claude-sonnet-4-6': 64000,
     'claude-opus-4-5-20251101': 64000,
     'claude-sonnet-4-5-20250929': 64000,
@@ -94,22 +92,19 @@ MODEL_MAX_TOKENS = {
 }
 
 MODEL_THINKING_MAX_TOKENS = {
-    'claude-opus-5-5': 128000,
-    'claude-opus-5': 128000,
-    'claude-sonnet-5': 128000,
-    'claude-fable-5': 128000,
-    'claude-fable-5-1': 128000,
-    'claude-opus-4-8': 128000,
-    'claude-opus-4-7': 128000,
-    'claude-opus-4-6': 128000,
     'claude-sonnet-4-6': 64000,
     'claude-opus-4-5-20251101': 64000,
     'claude-sonnet-4-5-20250929': 64000,
     'claude-opus-4-1-20250805': 32000,
     'claude-4-opus-20250514': 32000,
     'claude-4-sonnet-20250514': 64000,
-    'claude-3-7-sonnet-20250219': 128000,
 }
+
+def get_major_version(model):
+    for part in model.split('-'):
+        if part.isdigit():
+            return int(part)
+    return None
 
 def get_prompt(model):
     for m in MODELS:
@@ -317,7 +312,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             model=model,
             messages=messages,
             stream=True,
-            max_tokens=MODEL_THINKING_MAX_TOKENS[model],
+            max_tokens=MODEL_THINKING_MAX_TOKENS.get(model, 128000),
             thinking={
                 "type": "adaptive",
             },
@@ -325,12 +320,12 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
                 "effort": "max",
             },
         )
-    elif model in ['claude-opus-4-7', 'claude-opus-4-8', 'claude-fable-5', 'claude-sonnet-5', 'claude-opus-5', 'claude-fable-5-1', 'claude-opus-5-5']:
+    elif model in ['claude-opus-4-7', 'claude-opus-4-8'] or get_major_version(model) >= 5:
         stream = await aclient.messages.create(
             model=model,
             messages=messages,
             stream=True,
-            max_tokens=MODEL_THINKING_MAX_TOKENS[model],
+            max_tokens=MODEL_THINKING_MAX_TOKENS.get(model, 128000),
             thinking={
                 "type": "adaptive",
                 "display": "summarized",
@@ -345,10 +340,10 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             model=model,
             messages=messages,
             stream=True,
-            max_tokens=MODEL_THINKING_MAX_TOKENS[model],
+            max_tokens=MODEL_THINKING_MAX_TOKENS.get(model, 128000),
             thinking={
                 "type": "enabled",
-                "budget_tokens": MODEL_THINKING_MAX_TOKENS[model] - 1,
+                "budget_tokens": MODEL_THINKING_MAX_TOKENS.get(model, 128000) - 1,
             },
             betas=["output-128k-2025-02-19"],
         )
@@ -357,7 +352,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             model=model,
             messages=messages,
             stream=True,
-            max_tokens=MODEL_MAX_TOKENS.get(model, 4096),
+            max_tokens=MODEL_MAX_TOKENS.get(model, 128000),
         )
     output_tokens = 0
     cache_creation_input_tokens = 0
