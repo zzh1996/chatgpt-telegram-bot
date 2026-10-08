@@ -32,6 +32,8 @@ GPT_4O_PROMPT = 'You are ChatGPT, a large language model trained by OpenAI, base
 MODELS = [
     {'prefix': '$', 'model': 'chat-latest', 'prompt_template': ''},
 
+    {'prefix': '61s$', 'model': 'gpt-6.1-sol', 'prompt_template': ''},
+
     {'prefix': '6$', 'model': 'gpt-6-astra', 'prompt_template': ''},
     {'prefix': '6s$', 'model': 'gpt-6-sol', 'prompt_template': ''},
     {'prefix': '6l$', 'model': 'gpt-6-luna', 'prompt_template': ''},
@@ -206,6 +208,8 @@ PRICING = {
     'gpt-6-astra': (10, 50, 1, True),
     'gpt-6-sol': (2, 10, 0.2, True),
     'gpt-6-luna': (0.1, 0.5, 0.01, True),
+
+    'gpt-6.1-sol': (2, 10, 0.1, True),
 }
 
 def get_prompt(model):
