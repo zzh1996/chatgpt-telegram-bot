@@ -27,7 +27,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'g$', 'model': 'gemini-3.1-pro-preview'},
+    {'prefix': 'g$', 'model': 'gemini-4-argon'},
+    {'prefix': 'g31$', 'model': 'gemini-3.1-pro-preview'},
     {'prefix': 'gf$', 'model': 'gemini-3.8-flash'},
     {'prefix': 'g38f$', 'model': 'gemini-3.8-flash'},
     {'prefix': 'g37f$', 'model': 'gemini-3.7-flash'},
@@ -98,6 +99,8 @@ MODELS = [
 DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
 
 def PRICING(model, input_tokens, output_tokens, input_audio_tokens, output_image_tokens):
+    if model == 'gemini-4-argon':
+        return 2e-6 * input_tokens + 10e-6 * output_tokens
     if model == 'gemini-nano-banana-2.1':
         return 1.5e-6 * input_tokens + 7.5e-6 * (output_tokens - output_image_tokens) + 30e-6 * output_image_tokens
     if model == 'gemini-3.6-flash' or model == 'gemini-3.7-flash' or model == 'gemini-3.8-flash':
@@ -466,6 +469,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         'gemini-3.7-flash',
         'gemini-3.8-flash',
         'gemini-nano-banana-2.1',
+        'gemini-4-argon',
     ]
     is_image_generation_model = model in [
         'gemini-2.0-flash-exp-image-generation',
@@ -487,7 +491,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
     )
 
     if is_reasoning_model:
-        if model.startswith('gemini-3') or model == 'gemini-nano-banana-2.1':
+        if model.startswith('gemini-3') or model == 'gemini-nano-banana-2.1' or model.startswith('gemini-4'):
             config.thinking_config = gtypes.ThinkingConfig(
                 include_thoughts=True,
                 thinking_level='high',
