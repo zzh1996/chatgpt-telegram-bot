@@ -541,6 +541,11 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
             config_tools.append({"url_context": {}})
     config.tools = config_tools
 
+    if model == "gemini-4-argon":
+        config.enable_enhanced_civic_answers = True
+        if 'r' in tools:
+            config.enable_enhanced_civic_answers = None
+
     def remove_response_blobs(response):
         response = response.model_dump(exclude_none=True)
         if "sdk_http_response" in response:
@@ -858,7 +863,7 @@ async def reply_handler(message):
                     break
                 elif m['prefix'] == t.strip().split('+', 1)[0] + '$':
                     tools = t.strip().split('+', 1)[1]
-                    if not set(tools) <= set('scu124SWHwh') or not tools:
+                    if not set(tools) <= set('scu124SWHwhr') or not tools:
                         await send_message(chat_id, '[!] Error: Unknown tools in prefix', msg_id)
                         return
                     models.append(m['model'] + '+' + tools)
