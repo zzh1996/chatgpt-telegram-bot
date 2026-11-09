@@ -25,7 +25,8 @@ ADMIN_ID = 71863318
 MODELS = [
     {'prefix': 'c$', 'model': 'claude-opus-5-5', 'prompt_template': ''},
     {'prefix': 'c5$', 'model': 'claude-opus-5', 'prompt_template': ''},
-    {'prefix': 'cf$', 'model': 'claude-fable-5-1', 'prompt_template': ''},
+    {'prefix': 'cf$', 'model': 'claude-fable-5-2', 'prompt_template': ''},
+    {'prefix': 'cf51$', 'model': 'claude-fable-5-1', 'prompt_template': ''},
     {'prefix': 'cf5$', 'model': 'claude-fable-5', 'prompt_template': ''},
     {'prefix': 'cs$', 'model': 'claude-sonnet-5-5', 'prompt_template': ''},
     {'prefix': 'cs5$', 'model': 'claude-sonnet-5', 'prompt_template': ''},
@@ -60,6 +61,7 @@ PRICING = {
     'claude-sonnet-5': (2e-6, 10e-6, 2.5e-6, 0.2e-6),
     'claude-fable-5': (10e-6, 50e-6, 12.5e-6, 1e-6),
     'claude-fable-5-1': (10e-6, 50e-6, 12.5e-6, 0.25e-6),
+    'claude-fable-5-2': (8e-6, 40e-6, 10e-6, 0.2e-6),
     'claude-sonnet-5-5': (2e-6, 10e-6, 2.5e-6, 0.1e-6),
     'claude-haiku-5-5': (0.1e-6, 0.5e-6, 0.125e-6, 0.01e-6),
 
