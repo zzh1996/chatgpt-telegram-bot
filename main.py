@@ -27,7 +27,8 @@ signal.signal(signal.SIGUSR1, debug_signal_handler)
 ADMIN_ID = 71863318
 
 MODELS = [
-    {'prefix': 'g$', 'model': 'gemini-4-argon'},
+    {'prefix': 'g$', 'model': 'gemini-4-carbon'},
+    {'prefix': 'g4$', 'model': 'gemini-4-argon'},
     {'prefix': 'g31$', 'model': 'gemini-3.1-pro-preview'},
     {'prefix': 'gf$', 'model': 'gemini-3.8-flash'},
     {'prefix': 'g38f$', 'model': 'gemini-3.8-flash'},
@@ -99,6 +100,8 @@ MODELS = [
 DEFAULT_MODEL = 'gemini-1.5-pro-latest' # For compatibility with the old database format
 
 def PRICING(model, input_tokens, output_tokens, input_audio_tokens, output_image_tokens):
+    if model == 'gemini-4-carbon':
+        return 2e-6 * input_tokens + 10e-6 * output_tokens
     if model == 'gemini-4-argon':
         return 2e-6 * input_tokens + 10e-6 * output_tokens
     if model == 'gemini-nano-banana-2.1':
@@ -470,6 +473,7 @@ async def completion(chat_history, model, chat_id, msg_id, task_id): # chat_hist
         'gemini-3.8-flash',
         'gemini-nano-banana-2.1',
         'gemini-4-argon',
+        'gemini-4-carbon',
     ]
     is_image_generation_model = model in [
         'gemini-2.0-flash-exp-image-generation',
